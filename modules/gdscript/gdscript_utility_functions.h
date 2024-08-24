@@ -56,6 +56,7 @@ public:
 
 	static void register_functions();
 	static void unregister_functions();
+	static bool is_instance_of(const Variant &p_value, const Variant &p_type);
 };
 
 #endif // GDSCRIPT_UTILITY_FUNCTIONS_H
