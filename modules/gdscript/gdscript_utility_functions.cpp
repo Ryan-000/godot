@@ -609,6 +609,21 @@ struct GDScriptUtilityFunctionsDefinitions {
 	}
 };
 
+// expose is_instance_of to C++
+bool GDScriptUtilityFunctions::is_instance_of(const Variant &p_value, const Variant &p_type) {
+	Variant ret;
+	const Variant *args[2] = { &p_value, &p_type };
+	Callable::CallError error;
+	GDScriptUtilityFunctionsDefinitions::is_instance_of(&ret, args, 2, error);
+
+	// if there was an error, return false
+	if (error.error != Callable::CallError::CALL_OK) {
+		return false;
+	}
+
+	return ret;
+}
+
 struct GDScriptUtilityFunctionInfo {
 	GDScriptUtilityFunctions::FunctionPtr function = nullptr;
 	MethodInfo info;

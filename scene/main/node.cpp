@@ -42,6 +42,7 @@
 #include "scene/main/window.h"
 #include "scene/resources/packed_scene.h"
 #include "viewport.h"
+#include "modules/gdscript/gdscript_utility_functions.h"
 
 #include <stdint.h>
 
@@ -1801,6 +1802,30 @@ bool Node::has_node(const NodePath &p_path) const {
 	return get_node_or_null(p_path) != nullptr;
 }
 
+
+Node *Node::find_child_of_type(const Variant &p_type) const {
+	ERR_THREAD_GUARD_V(nullptr);
+	_update_children_cache();
+	Node *const *cptr = data.children_cache.ptr();
+	int ccount = data.children_cache.size();
+	for (int i = 0; i < ccount; i++) {
+		Node* node = cptr[i];
+
+		// if p_type is a string, check if the node is an instance of the class
+		if (p_type.get_type() == Variant::STRING || p_type.get_type() == Variant::STRING_NAME) {
+			if (node->is_class(p_type)) {
+				return node;
+			}
+		} else {
+			// if p_type is a class, check if the node is an instance of the class
+			if (GDScriptUtilityFunctions::is_instance_of(node, p_type)) {
+				return node;
+			}
+		}
+	}
+	return nullptr;
+}
+
 // Finds the first child node (in tree order) whose name matches the given pattern.
 // Can be recursive or not, and limited to owned nodes.
 Node *Node::find_child(const String &p_pattern, bool p_recursive, bool p_owned) const {
@@ -3506,6 +3531,7 @@ void Node::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_node", "path"), &Node::get_node);
 	ClassDB::bind_method(D_METHOD("get_node_or_null", "path"), &Node::get_node_or_null);
 	ClassDB::bind_method(D_METHOD("get_parent"), &Node::get_parent);
+	ClassDB::bind_method(D_METHOD("find_child_of_type", "type"), &Node::find_child_of_type);
 	ClassDB::bind_method(D_METHOD("find_child", "pattern", "recursive", "owned"), &Node::find_child, DEFVAL(true), DEFVAL(true));
 	ClassDB::bind_method(D_METHOD("find_children", "pattern", "type", "recursive", "owned"), &Node::find_children, DEFVAL(""), DEFVAL(true), DEFVAL(true));
 	ClassDB::bind_method(D_METHOD("find_parent", "pattern"), &Node::find_parent);
@@ -3939,5 +3965,6 @@ bool Node::is_connected(const StringName &p_signal, const Callable &p_callable) 
 	ERR_THREAD_GUARD_V(false);
 	return Object::is_connected(p_signal, p_callable);
 }
+
 
 #endif
