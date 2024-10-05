@@ -1,0 +1,73 @@
+name: 🐧 Linux Builds
+on:
+  push:
+    branches:
+      - ryan_engine_master
+
+env:
+  GODOT_BASE_BRANCH: ryan_engine_master
+  SCONSFLAGS: module_mono_enabled=true debug_symbols=yes warnings=extra werror=yes verbose=yes
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  TSAN_OPTIONS: suppressions=misc/error_suppressions/tsan.txt
+
+jobs:
+  build-linux:
+    runs-on: "ubuntu-20.04"
+    name: Editor with Mono Build
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Free disk space on runner
+        run: |
+          echo "Disk usage before:" && df -h
+          sudo rm -rf /usr/local/lib/android
+          echo "Disk usage after:" && df -h
+
+      # Restore cache to improve build time
+      - name: Restore Godot build cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            bin/
+            .sconsign.dblite
+          key: ${{ runner.os }}-godot-build-${{ hashFiles('SConstruct') }}
+
+      # Install dependencies for building Godot
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y scons python3
+
+      # Compile the Godot editor using your custom SCons flags
+      - name: Build Godot Editor with Mono
+        run: |
+          scons platform=linuxbsd ${{ env.SCONSFLAGS }} -j $(nproc --all)
+        
+      # Upload the build artifacts (e.g., Godot editor binary)
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: godot-linux-editor
+          path: ./bin/godot.linuxbsd.editor.x86_64.mono
+
+      # Run additional steps (like generating Mono glue, running doctool, etc.)
+      - name: Generate C# glue
+        run: |
+          ./bin/godot.linuxbsd.editor.x86_64.mono --headless --generate-mono-glue ./modules/mono/glue
+
+      - name: Build .NET assemblies
+        run: |
+          python3 ./modules/mono/build_scripts/build_assemblies.py --godot-output-dir=./bin --godot-platform=linuxbsd
+
+      # Save the cache for incremental builds
+      - name: Save Godot build cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            bin/
+            .sconsign.dblite
+          key: ${{ runner.os }}-godot-build-${{ hashFiles('SConstruct') }}
+
