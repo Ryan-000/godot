@@ -32,8 +32,20 @@ jobs:
         with:
           path: |
             bin/
+            core/
+            drivers/
+            editor/
+            main/
+            misc/
+            modules/
+            platform/
+            scene/
+            servers/
+            tests/
+            thirdparty/
             .sconsign.dblite
           key: ${{ runner.os }}-godot-build-${{ hashFiles('SConstruct') }}
+
 
       # Install dependencies for building Godot
       - name: Install Dependencies
@@ -98,11 +110,23 @@ jobs:
           asset_name: GodotSharp.zip  # You can zip the folder before uploading
           asset_content_type: application/zip
 
-      # Save the cache for incremental builds
+        # Save the cache for incremental builds
       - name: Save Godot build cache
         uses: actions/cache@v3
         with:
           path: |
             bin/
+            core/
+            drivers/
+            editor/
+            main/
+            misc/
+            modules/
+            platform/
+            scene/
+            servers/
+            tests/
+            thirdparty/
             .sconsign.dblite
           key: ${{ runner.os }}-godot-build-${{ hashFiles('SConstruct') }}
+
