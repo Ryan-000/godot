@@ -837,3 +837,16 @@ bool EditorDebuggerNode::plugins_capture(ScriptEditorDebugger *p_debugger, const
 	}
 	return parsed;
 }
+
+bool EditorDebuggerNode::plugins_filter_error(ScriptEditorDebugger *p_debugger, DebuggerMarshalls::OutputError &oe) {
+	int p_session_id = tabs->get_tab_idx_from_control(p_debugger);
+	ERR_FAIL_COND_V(p_session_id < 0, false);
+
+	bool filtered = false;
+	for (Ref<EditorDebuggerPlugin> plugin : debugger_plugins) {
+		if (plugin->filter_error(oe, p_session_id)) {
+			filtered = true;
+		}
+	}
+	return filtered;
+}
