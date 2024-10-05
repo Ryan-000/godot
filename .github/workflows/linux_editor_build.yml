@@ -13,7 +13,7 @@ env:
 
 jobs:
   build-linux:
-    runs-on: "ubuntu-20.04"
+    runs-on: ubuntu-20.04
     name: Editor with Mono Build
     steps:
       - uses: actions/checkout@v4
@@ -45,22 +45,58 @@ jobs:
       - name: Build Godot Editor with Mono
         run: |
           scons platform=linuxbsd ${{ env.SCONSFLAGS }} -j $(nproc --all)
-        
-      # Upload the build artifacts (e.g., Godot editor binary)
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v3
-        with:
-          name: godot-linux-editor
-          path: ./bin/godot.linuxbsd.editor.x86_64.mono
 
-      # Run additional steps (like generating Mono glue, running doctool, etc.)
+      # Generate Mono glue files
       - name: Generate C# glue
         run: |
           ./bin/godot.linuxbsd.editor.x86_64.mono --headless --generate-mono-glue ./modules/mono/glue
 
+      # Build .NET assemblies for Mono
       - name: Build .NET assemblies
         run: |
           python3 ./modules/mono/build_scripts/build_assemblies.py --godot-output-dir=./bin --godot-platform=linuxbsd
+
+      # Upload build artifacts, including the GodotSharp folder
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: godot-linux-editor-with-godotsharp
+          path: |
+            ./bin/godot.linuxbsd.editor.x86_64.mono
+            ./bin/GodotSharp  # Include GodotSharp folder
+
+      # Create a GitHub release (automatically triggered after each push)
+      - name: Create GitHub Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # GitHub provides this token automatically
+        with:
+          tag_name: ${{ github.sha }}  # Tag the release with the commit SHA
+          release_name: "Godot Linux Build ${{ github.sha }}"
+          draft: false
+          prerelease: false
+
+      # Upload the binary and GodotSharp folder to the release
+      - name: Upload Release Asset - Editor Binary
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./bin/godot.linuxbsd.editor.x86_64.mono
+          asset_name: godot.linuxbsd.editor.x86_64.mono
+          asset_content_type: application/octet-stream
+
+      - name: Upload Release Asset - GodotSharp Folder
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./bin/GodotSharp
+          asset_name: GodotSharp.zip  # You can zip the folder before uploading
+          asset_content_type: application/zip
 
       # Save the cache for incremental builds
       - name: Save Godot build cache
@@ -70,4 +106,3 @@ jobs:
             bin/
             .sconsign.dblite
           key: ${{ runner.os }}-godot-build-${{ hashFiles('SConstruct') }}
-
