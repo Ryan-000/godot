@@ -31,6 +31,7 @@
 #ifndef EDITOR_DEBUGGER_PLUGIN_H
 #define EDITOR_DEBUGGER_PLUGIN_H
 
+#include "core/debugger/debugger_marshalls.h"
 #include "scene/gui/control.h"
 
 class ScriptEditorDebugger;
@@ -83,6 +84,7 @@ public:
 
 	virtual void setup_session(int p_idx);
 	virtual bool capture(const String &p_message, const Array &p_data, int p_session);
+	virtual bool filter_error(DebuggerMarshalls::OutputError &oe, int p_session_id);
 	virtual bool has_capture(const String &p_capture) const;
 
 	Ref<EditorDebuggerSession> get_session(int p_session_id);
@@ -90,6 +92,7 @@ public:
 
 	GDVIRTUAL3R(bool, _capture, const String &, const Array &, int);
 	GDVIRTUAL1RC(bool, _has_capture, const String &);
+	GDVIRTUAL2RC(bool, _filter_error, const Array &, int);
 	GDVIRTUAL1(_setup_session, int);
 
 	virtual void goto_script_line(const Ref<Script> &p_script, int p_line);

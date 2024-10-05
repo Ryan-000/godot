@@ -71,6 +71,13 @@
 				Override this method to process incoming messages. The [param session_id] is the ID of the [EditorDebuggerSession] that received the message (which you can retrieve via [method get_session]).
 			</description>
 		</method>
+		<method name="_filter_error" qualifiers="virtual const">
+			<return type="bool" />
+			<param index="0" name="error" type="Array" />
+			<param index="1" name="session_id" type="int" />
+			<description>
+			</description>
+		</method>
 		<method name="_goto_script_line" qualifiers="virtual">
 			<return type="void" />
 			<param index="0" name="script" type="Script" />
