@@ -30,6 +30,7 @@
 
 #include "editor_debugger_plugin.h"
 
+#include "core/debugger/debugger_marshalls.h"
 #include "editor/debugger/script_editor_debugger.h"
 
 void EditorDebuggerSession::_breaked(bool p_really_did, bool p_can_debug, const String &p_message, bool p_has_stackdump) {
@@ -190,6 +191,17 @@ bool EditorDebuggerPlugin::capture(const String &p_message, const Array &p_data,
 	return false;
 }
 
+bool EditorDebuggerPlugin::filter_error(DebuggerMarshalls::OutputError &oe, int p_session_id) {
+	Array output_error_serialized = oe.serialize();
+
+	bool ret = false;
+	if (GDVIRTUAL_CALL(_filter_error, output_error_serialized, p_session_id, ret)) {
+		return ret;
+	}
+
+	return false;
+}
+
 void EditorDebuggerPlugin::goto_script_line(const Ref<Script> &p_script, int p_line) {
 	GDVIRTUAL_CALL(_goto_script_line, p_script, p_line);
 }
@@ -206,6 +218,7 @@ void EditorDebuggerPlugin::_bind_methods() {
 	GDVIRTUAL_BIND(_setup_session, "session_id");
 	GDVIRTUAL_BIND(_has_capture, "capture");
 	GDVIRTUAL_BIND(_capture, "message", "data", "session_id");
+	GDVIRTUAL_BIND(_filter_error, "error", "session_id");
 	GDVIRTUAL_BIND(_goto_script_line, "script", "line");
 	GDVIRTUAL_BIND(_breakpoints_cleared_in_tree);
 	GDVIRTUAL_BIND(_breakpoint_set_in_tree, "script", "line", "enabled");
