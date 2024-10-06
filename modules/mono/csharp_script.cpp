@@ -64,6 +64,8 @@
 #include "editor/editor_settings.h"
 #include "editor/inspector_dock.h"
 #include "editor/node_dock.h"
+#include "modules/godot_tracy/profiler.h"
+#include "modules/godot_tracy/tracy/public/tracy/Tracy.hpp"
 #endif
 
 #include <stdint.h>
@@ -1641,6 +1643,19 @@ int CSharpInstance::get_method_argument_count(const StringName &p_method, bool *
 }
 
 Variant CSharpInstance::callp(const StringName &p_method, const Variant **p_args, int p_argcount, Callable::CallError &r_error) {
+#ifdef MODULE_GODOT_TRACY_ENABLED
+	ZoneScoped;
+
+	// get the script path.
+	String identifier = script->get_path();
+	// get the file name.
+	//	identifier = identifier.get_file().get_basename();
+	identifier += "::" + p_method;
+
+	CharString c = Profiler::stringify_method(identifier, p_args, p_argcount);
+	ZoneName(c.ptr(), c.size());
+#endif // MODULE_GODOT_TRACY_ENABLED
+
 	ERR_FAIL_COND_V(!script.is_valid(), Variant());
 
 	Variant ret;

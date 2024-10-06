@@ -36,6 +36,7 @@
 #include "core/object/script_language.h"
 #include "core/string/print_string.h"
 #include "instance_placeholder.h"
+#include "modules/godot_tracy/tracy/public/tracy/Tracy.hpp"
 #include "scene/animation/tween.h"
 #include "scene/debugger/scene_debugger.h"
 #include "scene/main/multiplayer_api.h"
@@ -50,6 +51,63 @@ int Node::orphan_node_count = 0;
 thread_local Node *Node::current_process_thread_group = nullptr;
 
 void Node::_notification(int p_notification) {
+#ifdef MODULE_GODOT_TRACY_ENABLED
+	ZoneScoped;  // Start a Tracy zone for the notification handling
+	String identifier = "Node::Notification::" + String::num(p_notification);  // Construct the identifier
+
+	switch (p_notification) {
+		case NOTIFICATION_PROCESS: {
+			identifier += "::Process";
+		} break;
+
+		case NOTIFICATION_PHYSICS_PROCESS: {
+			identifier += "::PhysicsProcess";
+		} break;
+
+		case NOTIFICATION_ENTER_TREE: {
+			identifier += "::EnterTree";
+		} break;
+
+		case NOTIFICATION_EXIT_TREE: {
+			identifier += "::ExitTree";
+		} break;
+
+		case NOTIFICATION_READY: {
+			identifier += "::Ready";
+		} break;
+
+		case NOTIFICATION_PAUSED: {
+			identifier += "::Paused";
+		} break;
+
+		case NOTIFICATION_PATH_RENAMED: {
+			identifier += "::PathRenamed";
+		} break;
+
+		case NOTIFICATION_POSTINITIALIZE: {
+			identifier += "::PostInitialize";
+		} break;
+
+		case NOTIFICATION_PREDELETE: {
+			identifier += "::PreDelete";
+		} break;
+
+		case NOTIFICATION_TRANSLATION_CHANGED: {
+			identifier += "::TranslationChanged";
+		} break;
+
+		default: {
+			identifier += "::Other";
+		} break;
+	}
+
+	// Set the Tracy zone name
+	CharString c = identifier.utf8();
+	ZoneName(c.get_data(), c.length());
+
+	// free the CharString
+#endif
+
 	switch (p_notification) {
 		case NOTIFICATION_PROCESS: {
 			GDVIRTUAL_CALL(_process, get_process_delta_time());

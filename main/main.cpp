@@ -131,6 +131,14 @@
 #endif // TOOLS_ENABLED && !GDSCRIPT_NO_LSP
 #endif // MODULE_GDSCRIPT_ENABLED
 
+#ifdef MODULE_GODOT_TRACY_ENABLED
+#include "modules/godot_tracy/profiler.h"
+#else
+// Dummy defines to allow compiling without tracy.
+#define ZoneScoped
+#define ZoneScopedN(a)
+#endif // MODULE_GODOT_TRACY_ENABLED
+
 /* Static members */
 
 // Singletons
@@ -3999,6 +4007,7 @@ static uint64_t navigation_process_max = 0;
 // will terminate the program. In case of failure, the OS exit code needs
 // to be set explicitly here (defaults to EXIT_SUCCESS).
 bool Main::iteration() {
+	ZoneScoped;
 	iterating++;
 
 	const uint64_t ticks = OS::get_singleton()->get_ticks_usec();
@@ -4044,6 +4053,8 @@ bool Main::iteration() {
 	NavigationServer2D::get_singleton()->sync();
 	NavigationServer3D::get_singleton()->sync();
 
+	{
+	ZoneScopedN("PHYSICS LOOP");
 	for (int iters = 0; iters < advance.physics_steps; ++iters) {
 		if (Input::get_singleton()->is_agile_input_event_flushing()) {
 			Input::get_singleton()->flush_buffered_events();
@@ -4055,8 +4066,11 @@ bool Main::iteration() {
 		uint64_t physics_begin = OS::get_singleton()->get_ticks_usec();
 
 #ifndef _3D_DISABLED
+		{
+			ZoneScopedN("Godot physics 3D - sync");
 		PhysicsServer3D::get_singleton()->sync();
 		PhysicsServer3D::get_singleton()->flush_queries();
+		}
 #endif // _3D_DISABLED
 
 		// Prepare the fixed timestep interpolated nodes BEFORE they are updated
@@ -4064,8 +4078,14 @@ bool Main::iteration() {
 		// may be the same, and no interpolation takes place.
 		OS::get_singleton()->get_main_loop()->iteration_prepare();
 
+		{
+			ZoneScopedN("Godot physics 2D - sync");
 		PhysicsServer2D::get_singleton()->sync();
 		PhysicsServer2D::get_singleton()->flush_queries();
+		}
+
+		{
+			ZoneScopedN("physics_process");
 
 		if (OS::get_singleton()->get_main_loop()->physics_process(physics_step * time_scale)) {
 #ifndef _3D_DISABLED
@@ -4076,10 +4096,14 @@ bool Main::iteration() {
 			exit = true;
 			break;
 		}
+		}
 
 		uint64_t navigation_begin = OS::get_singleton()->get_ticks_usec();
 
+		{
+			ZoneScopedN("Navigation process");
 		NavigationServer3D::get_singleton()->process(physics_step * time_scale);
+		}
 
 		navigation_process_ticks = MAX(navigation_process_ticks, OS::get_singleton()->get_ticks_usec() - navigation_begin); // keep the largest one for reference
 		navigation_process_max = MAX(OS::get_singleton()->get_ticks_usec() - navigation_begin, navigation_process_max);
@@ -4087,12 +4111,18 @@ bool Main::iteration() {
 		message_queue->flush();
 
 #ifndef _3D_DISABLED
+		{
+			ZoneScopedN("Godot physics 3D - step");
 		PhysicsServer3D::get_singleton()->end_sync();
 		PhysicsServer3D::get_singleton()->step(physics_step * time_scale);
+		}
 #endif // _3D_DISABLED
 
+		{
+			ZoneScopedN("Godot physics 2D - step");
 		PhysicsServer2D::get_singleton()->end_sync();
 		PhysicsServer2D::get_singleton()->step(physics_step * time_scale);
+		}
 
 		message_queue->flush();
 
@@ -4101,6 +4131,7 @@ bool Main::iteration() {
 
 		Engine::get_singleton()->_in_physics = false;
 	}
+	}
 
 	if (Input::get_singleton()->is_agile_input_event_flushing()) {
 		Input::get_singleton()->flush_buffered_events();
@@ -4108,11 +4139,16 @@ bool Main::iteration() {
 
 	uint64_t process_begin = OS::get_singleton()->get_ticks_usec();
 
+	{
+		ZoneScopedN("Main process");
 	if (OS::get_singleton()->get_main_loop()->process(process_step * time_scale)) {
 		exit = true;
 	}
+	}
 	message_queue->flush();
 
+	{
+		ZoneScopedN("Main::iteration - Draw");
 	RenderingServer::get_singleton()->sync(); //sync if still drawing from previous frames.
 
 	if ((DisplayServer::get_singleton()->can_any_window_draw() || DisplayServer::get_singleton()->has_additional_outputs()) &&
@@ -4128,16 +4164,23 @@ bool Main::iteration() {
 			force_redraw_requested = false;
 		}
 	}
+	}
 
 	process_ticks = OS::get_singleton()->get_ticks_usec() - process_begin;
 	process_max = MAX(process_ticks, process_max);
 	uint64_t frame_time = OS::get_singleton()->get_ticks_usec() - ticks;
 
+	{
+		ZoneScopedN("Languages update");
 	for (int i = 0; i < ScriptServer::get_language_count(); i++) {
 		ScriptServer::get_language(i)->frame();
 	}
+	}
 
+	{
+		ZoneScopedN("Audio update");
 	AudioServer::get_singleton()->update();
+	}
 
 	if (EngineDebugger::is_active()) {
 		EngineDebugger::get_singleton()->iteration(frame_time, process_ticks, physics_process_ticks, physics_step);
@@ -4198,7 +4241,10 @@ bool Main::iteration() {
 		return exit;
 	}
 
+	{
+		ZoneScopedN("Frame delay");
 	OS::get_singleton()->add_frame_delay(DisplayServer::get_singleton()->window_can_draw());
+	}
 
 #ifdef TOOLS_ENABLED
 	if (auto_build_solutions) {

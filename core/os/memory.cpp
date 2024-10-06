@@ -36,6 +36,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+
 void *operator new(size_t p_size, const char *p_description) {
 	return Memory::alloc_static(p_size, false);
 }
@@ -73,6 +74,9 @@ void *Memory::alloc_static(size_t p_bytes, bool p_pad_align) {
 #endif
 
 	void *mem = malloc(p_bytes + (prepad ? DATA_OFFSET : 0));
+#if MODULE_GODOT_TRACY_ENABLED
+	TracyAlloc(mem, p_bytes);
+#endif
 
 	ERR_FAIL_NULL_V(mem, nullptr);
 
@@ -121,9 +125,16 @@ void *Memory::realloc_static(void *p_memory, size_t p_bytes, bool p_pad_align) {
 #endif
 
 		if (p_bytes == 0) {
+#if MODULE_GODOT_TRACY_ENABLED
+			TracyFree(mem);
+#endif
 			free(mem);
 			return nullptr;
 		} else {
+#if MODULE_GODOT_TRACY_ENABLED
+			TracyFree(mem + DATA_OFFSET);  // Free old memory
+#endif
+
 			*s = p_bytes;
 
 			mem = (uint8_t *)realloc(mem, p_bytes + DATA_OFFSET);
@@ -133,12 +144,24 @@ void *Memory::realloc_static(void *p_memory, size_t p_bytes, bool p_pad_align) {
 
 			*s = p_bytes;
 
+#if MODULE_GODOT_TRACY_ENABLED
+			TracyAlloc(mem + DATA_OFFSET, p_bytes);  // Allocate new memory
+#endif
+
 			return mem + DATA_OFFSET;
 		}
 	} else {
+#if MODULE_GODOT_TRACY_ENABLED
+		TracyFree(mem);  // Free old memory
+#endif
+
 		mem = (uint8_t *)realloc(mem, p_bytes);
 
 		ERR_FAIL_COND_V(mem == nullptr && p_bytes > 0, nullptr);
+
+#if MODULE_GODOT_TRACY_ENABLED
+		TracyAlloc(mem, p_bytes);  // Allocate new memory
+#endif
 
 		return mem;
 	}
@@ -165,8 +188,16 @@ void Memory::free_static(void *p_ptr, bool p_pad_align) {
 		mem_usage.sub(*s);
 #endif
 
+#if MODULE_GODOT_TRACY_ENABLED
+		TracyFree(mem);
+#endif
 		free(mem);
 	} else {
+
+#if MODULE_GODOT_TRACY_ENABLED
+		TracyFree(mem);
+#endif
+
 		free(mem);
 	}
 }

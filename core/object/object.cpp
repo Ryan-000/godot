@@ -42,6 +42,12 @@
 #include "core/templates/local_vector.h"
 #include "core/variant/typed_array.h"
 
+#include "modules/modules_enabled.gen.h"
+
+#ifdef MODULE_GODOT_TRACY_ENABLED
+#include "modules/godot_tracy/profiler.h"
+#endif // MODULE_GODOT_TRACY_ENABLED
+
 #ifdef DEBUG_ENABLED
 
 struct _ObjectDebugLock {
@@ -751,6 +757,12 @@ Variant Object::callv(const StringName &p_method, const Array &p_args) {
 }
 
 Variant Object::callp(const StringName &p_method, const Variant **p_args, int p_argcount, Callable::CallError &r_error) {
+#ifdef MODULE_GODOT_TRACY_ENABLED
+	ZoneScoped;
+	CharString c = Profiler::stringify_method(p_method, p_args, p_argcount);
+	ZoneName(c.ptr(), c.size());
+#endif // MODULE_GODOT_TRACY_ENABLED
+
 	r_error.error = Callable::CallError::CALL_OK;
 
 	if (p_method == CoreStringName(free_)) {
@@ -814,6 +826,12 @@ Variant Object::callp(const StringName &p_method, const Variant **p_args, int p_
 }
 
 Variant Object::call_const(const StringName &p_method, const Variant **p_args, int p_argcount, Callable::CallError &r_error) {
+#ifdef MODULE_GODOT_TRACY_ENABLED
+	ZoneScoped;
+	CharString c = Profiler::stringify_method(p_method, p_args, p_argcount);
+	ZoneName(c.ptr(), c.size());
+#endif // MODULE_GODOT_TRACY_ENABLED
+
 	r_error.error = Callable::CallError::CALL_OK;
 
 	if (p_method == CoreStringName(free_)) {
@@ -862,6 +880,24 @@ Variant Object::call_const(const StringName &p_method, const Variant **p_args, i
 }
 
 void Object::notification(int p_notification, bool p_reversed) {
+#ifdef MODULE_GODOT_TRACY_ENABLED
+	ZoneScoped;  // Start a Tracy zone to track the entire notification process
+	String identifier = "Notification::" + String::num(p_notification);  // Start building the identifier
+
+	if (script_instance) {
+		// If it's a script-based notification, include the script path and notification number
+		identifier = "Script::" + script_instance->get_script()->get_path() + "::Notification::" + String::num(p_notification);
+	} else {
+		// For standard objects, include the class name
+		identifier = "Class::" + String(get_class()) + "::Notification::" + String::num(p_notification);
+	}
+
+	// Set the identifier for the Tracy zone
+	CharString c = identifier.utf8();
+	ZoneName(c.get_data(), c.length());
+#endif
+
+
 	if (p_reversed) {
 		if (script_instance) {
 			script_instance->notification(p_notification, p_reversed);
