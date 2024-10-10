@@ -40,6 +40,7 @@
 #include "core/math/expression.h"
 #include "core/object/script_language.h"
 #include "core/os/os.h"
+#include "main/performance.h"
 #include "servers/display_server.h"
 
 class RemoteDebugger::PerformanceProfiler : public EngineProfiler {
@@ -73,6 +74,12 @@ public:
 		Array arr;
 		arr.resize(max + custom_monitor_names.size());
 		for (int i = 0; i < max; i++) {
+			// ignore audio profiler for now due to lockup on linux
+			if (i == Performance::Monitor::AUDIO_OUTPUT_LATENCY) {
+				arr[i] = 0;
+				continue;
+			}
+
 			arr[i] = performance->call("get_monitor", i);
 		}
 
