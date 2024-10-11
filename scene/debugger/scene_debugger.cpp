@@ -509,9 +509,15 @@ SceneDebuggerTree::SceneDebuggerTree(Node *p_root) {
 	bool is_root = true;
 	const StringName &is_visible_sn = SNAME("is_visible");
 	const StringName &is_visible_in_tree_sn = SNAME("is_visible_in_tree");
+	const StringName &exclude_meta_key = SNAME("_scene_debugger_tree_branch_exclude_");
+
 	while (stack.size()) {
 		Node *n = stack.front()->get();
 		stack.pop_front();
+
+		if (n->has_meta(exclude_meta_key)) {
+			continue;
+		}
 
 		int count = n->get_child_count();
 		for (int i = 0; i < count; i++) {
