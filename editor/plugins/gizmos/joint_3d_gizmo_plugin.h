@@ -37,7 +37,8 @@ class Joint3DGizmoPlugin : public EditorNode3DGizmoPlugin {
 	GDCLASS(Joint3DGizmoPlugin, EditorNode3DGizmoPlugin);
 
 	Timer *update_timer = nullptr;
-	uint64_t update_idx = 0;
+	HashSet<EditorNode3DGizmo *>::Iterator gizmo_iterator;
+
 
 	void incremental_update_gizmos();
 
