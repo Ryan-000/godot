@@ -2008,6 +2008,12 @@ void SceneTreeDock::perform_node_renames(Node *p_base, HashMap<Node *, NodePath>
 		return;
 	}
 
+	// if it has no owner, but its not the root node, return early
+	if (!p_base->get_owner() && p_base != p_base->get_tree()->get_edited_scene_root()) {
+		// possibly special case for ->is_editable_instance()?
+		return;
+	}
+
 	// No renaming if base node is deleted.
 	HashMap<Node *, NodePath>::Iterator found_base_path = p_renames->find(p_base);
 	if (found_base_path && found_base_path->value.is_empty()) {

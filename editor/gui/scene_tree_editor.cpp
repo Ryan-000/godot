@@ -793,7 +793,12 @@ void SceneTreeEditor::_compute_hash(Node *p_node, uint64_t &hash) {
 	}
 
 	for (int i = 0; i < p_node->get_child_count(); i++) {
-		_compute_hash(p_node->get_child(i), hash);
+		Node *child = p_node->get_child(i);
+		// if the child is not owned, skip.
+		if (!child->get_owner()) {
+			continue;
+		}
+		_compute_hash(child, hash);
 	}
 }
 
