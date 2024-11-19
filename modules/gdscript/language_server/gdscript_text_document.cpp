@@ -112,10 +112,21 @@ void GDScriptTextDocument::didSave(const Variant &p_param) {
 		}
 
 		scr->update_exports();
-		ScriptEditor::get_singleton()->reload_scripts(true);
-		ScriptEditor::get_singleton()->update_docs_from_script(scr);
-		ScriptEditor::get_singleton()->trigger_live_script_reload(scr->get_path());
+
+		if ((bool)_EDITOR_GET("network/language_server/use_thread")) {
+			// its not safe to call "reload_scripts" from the currrent thread, so it needs to be deferred
+			// otherwise it will randomly cause a crash.
+			(callable_mp(this, &GDScriptTextDocument::reload_script)).call_deferred(scr);
+		} else {
+			reload_script(scr);
+		}
 	}
+}
+
+void GDScriptTextDocument::reload_script(Ref<GDScript> to_reload_script) {
+	ScriptEditor::get_singleton()->reload_scripts(true);
+	ScriptEditor::get_singleton()->update_docs_from_script(to_reload_script);
+	ScriptEditor::get_singleton()->trigger_live_script_reload(to_reload_script->get_path());
 }
 
 lsp::TextDocumentItem GDScriptTextDocument::load_document_item(const Variant &p_param) {
