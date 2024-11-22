@@ -193,23 +193,23 @@ Ref<Image> NoiseTexture2D::_modulate_with_gradient(Ref<Image> p_image, Ref<Gradi
 }
 
 void NoiseTexture2D::_update_texture() {
-	bool use_thread = true;
+	// Check if this is the first time the texture is being updated
 	if (first_time) {
-		use_thread = false;
 		first_time = false;
-	}
-	if (use_thread) {
-		if (!noise_thread.is_started()) {
-			noise_thread.start(_thread_function, this);
-			regen_queued = false;
-		} else {
-			regen_queued = true;
-		}
 
-	} else {
-		Ref<Image> new_image = _generate_texture();
-		_set_texture_image(new_image);
+		// Set a default white image
+		Ref<Image> default_image = Image::create_empty(size.x, size.y, false, Image::FORMAT_RGBA8);
+		default_image->fill(Color(1.0, 1.0, 1.0, 1.0)); // White color
+		_set_texture_image(default_image);
 	}
+
+	if (!noise_thread.is_started()) {
+		noise_thread.start(_thread_function, this);
+		regen_queued = false;
+	} else {
+		regen_queued = true;
+	}
+
 	update_queued = false;
 }
 
