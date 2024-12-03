@@ -123,6 +123,14 @@ ResourceUID::ID ResourceLoader::get_resource_uid(const String &p_path) {
 	return ::ResourceLoader::get_resource_uid(p_path);
 }
 
+String ResourceLoader::get_resource_type(const String &p_path) {
+	return ::ResourceLoader::get_resource_type(p_path);
+}
+
+String ResourceLoader::get_resource_script_class(const String &p_path) {
+	return ::ResourceLoader::get_resource_script_class(p_path);
+}
+
 void ResourceLoader::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("load_threaded_request", "path", "type_hint", "use_sub_threads", "cache_mode"), &ResourceLoader::load_threaded_request, DEFVAL(""), DEFVAL(false), DEFVAL(CACHE_MODE_REUSE));
 	ClassDB::bind_method(D_METHOD("load_threaded_get_status", "path", "progress"), &ResourceLoader::load_threaded_get_status, DEFVAL(Array()));
@@ -137,6 +145,8 @@ void ResourceLoader::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("has_cached", "path"), &ResourceLoader::has_cached);
 	ClassDB::bind_method(D_METHOD("exists", "path", "type_hint"), &ResourceLoader::exists, DEFVAL(""));
 	ClassDB::bind_method(D_METHOD("get_resource_uid", "path"), &ResourceLoader::get_resource_uid);
+	ClassDB::bind_method(D_METHOD("get_resource_type", "path"), &ResourceLoader::get_resource_type);
+	ClassDB::bind_method(D_METHOD("get_resource_script_class", "path"), &ResourceLoader::get_resource_script_class);
 
 	BIND_ENUM_CONSTANT(THREAD_LOAD_INVALID_RESOURCE);
 	BIND_ENUM_CONSTANT(THREAD_LOAD_IN_PROGRESS);
