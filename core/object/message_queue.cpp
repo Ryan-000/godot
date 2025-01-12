@@ -226,6 +226,40 @@ void CallQueue::_call_function(const Callable &p_callable, const Variant *p_args
 Error CallQueue::flush() {
 	LOCK_MUTEX;
 
+#ifdef MODULE_GODOT_TRACY_ENABLED
+	ZoneScoped; // Trace the entire push operation
+
+	// Start constructing the identifier
+	String identifier = "Callable::";
+	Object *obj = p_callable.get_object(); // Get the object associated with the callable
+
+	if (obj) {
+		// Check if it's a standard method (not from a script)
+		if (p_callable.is_standard()) {
+			// Append the standard method name and class name
+			identifier += obj->get_class() + "::" + p_callable.get_method();
+		} else {
+			// It's a script callable, so get the script instance
+			ScriptInstance *script = obj->get_script_instance();
+			if (script) {
+				// Get the script path and append it to the identifier along with the method name
+				identifier = "Script::" + script->get_script()->get_path() + "::" + p_callable.get_method();
+			} else {
+				// Fallback to using just the class name and method if no script instance is found
+				identifier += "Custom::" + obj->get_class() + "::" + p_callable.get_method();
+			}
+		}
+	} else {
+		// No object, use just the method name
+		identifier += p_callable.get_method();
+	}
+
+	// Convert the identifier to a char array for Tracy
+	CharString c = identifier.utf8();
+	ZoneName(c.get_data(), c.length());  // Set the zone name with the constructed identifier
+#endif
+
+
 	if (pages.size() == 0) {
 		// Never allocated
 		UNLOCK_MUTEX;
