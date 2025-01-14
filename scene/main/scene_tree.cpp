@@ -928,6 +928,14 @@ void SceneTree::_process_group(ProcessGroup *p_group, bool p_physics) {
 		return;
 	}
 
+	// Precompute hierarchy paths for all nodes before sorting to prevent extra work
+	{
+		ZoneScopedN("SceneTree::_process_group Precompute Hierarchy Paths");
+		for (Node *node : nodes) {
+			node->precompute_hierarchy_path();
+		}
+	}
+
 	if (p_physics) {
 		if (p_group->physics_node_order_dirty) {
 			ZoneScopedN("SceneTree::_process_group Physics Node Sort");

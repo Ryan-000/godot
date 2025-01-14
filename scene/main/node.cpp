@@ -239,6 +239,8 @@ void Node::_notification(int p_notification) {
 				memdelete(data.path_cache);
 				data.path_cache = nullptr;
 			}
+			// reset the cached_hierarchy_path
+			data.cached_hierarchy_path.clear();
 		} break;
 
 		case NOTIFICATION_PAUSED: {
@@ -577,6 +579,9 @@ void Node::_move_child(Node *p_child, int p_index, bool p_ignore_end) {
 			data.children_cache[i]->data.index = i;
 		}
 	}
+
+	data.cached_hierarchy_path.clear();
+
 	// notification second
 	move_child_notify(p_child);
 	notification(NOTIFICATION_CHILD_ORDER_CHANGED);
@@ -2048,6 +2053,61 @@ bool Node::is_ancestor_of(const Node *p_node) const {
 
 	return false;
 }
+
+void Node::precompute_hierarchy_path() const {
+	if (data.cached_hierarchy_path.size() == data.depth) {
+		// Skip if already cached and valid
+		return;
+	}
+
+	// Resize to avoid reallocation
+	data.cached_hierarchy_path.resize(data.depth);
+
+	// Fill the path from the node to the root
+	const Node *n = this;
+	for (int i = data.depth - 1; i >= 0; --i) {
+		data.cached_hierarchy_path.write[i] = n->get_index();
+		n = n->data.parent;
+	}
+}
+
+bool Node::is_greater_than_cached(const Node *p_node) const {
+	// Ensure paths are precomputed
+	precompute_hierarchy_path();
+	p_node->precompute_hierarchy_path();
+
+	const Vector<int> &this_path = data.cached_hierarchy_path;
+	const Vector<int> &that_path = p_node->data.cached_hierarchy_path;
+
+	const int this_size = this_path.size();
+	const int that_size = that_path.size();
+	const int min_size = MIN(this_size, that_size);
+
+	const int *this_data = this_path.ptr();
+	const int *that_data = that_path.ptr();
+
+	int cmp_result = memcmp(this_data, that_data, min_size * sizeof(int));
+	if (cmp_result != 0) {
+		// cmp_result > 0 means the first mismatching byte in this_data is bigger
+		// cmp_result < 0 means the first mismatching byte in this_data is smaller
+		return cmp_result > 0;
+	}
+
+	return this_size > that_size;
+//
+//	// Compare paths lexicographically
+//	int min_size = MIN(this_path.size(), that_path.size());
+//	for (int i = 0; i < min_size; ++i) {
+//		if (this_path[i] != that_path[i]) {
+//			return this_path[i] > that_path[i];
+//		}
+//	}
+
+	// If paths are equal up to the shortest length, the deeper node is greater
+//	return this_path.size() > that_path.size();
+}
+
+
 
 bool Node::is_greater_than(const Node *p_node) const {
 	ERR_FAIL_NULL_V(p_node, false);
