@@ -28,6 +28,10 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
 /**************************************************************************/
 
+
+#include "modules/godot_tracy/profiler.h"
+
+
 #include "worker_thread_pool.h"
 
 #include "core/object/script_language.h"
@@ -50,6 +54,8 @@ thread_local uintptr_t WorkerThreadPool::unlockable_mutexes[MAX_UNLOCKABLE_MUTEX
 #endif
 
 void WorkerThreadPool::_process_task(Task *p_task) {
+	ZoneScopedN(p_task->description.utf8().get_data());
+
 #ifdef THREADS_ENABLED
 	int pool_thread_index = thread_ids[Thread::get_caller_id()];
 	ThreadData &curr_thread = threads[pool_thread_index];

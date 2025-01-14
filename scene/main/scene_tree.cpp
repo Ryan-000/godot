@@ -62,6 +62,7 @@
 #include "scene/resources/3d/world_3d.h"
 #include "servers/physics_server_3d.h"
 #endif // _3D_DISABLED
+#include "modules/godot_tracy/tracy/public/tracy/Tracy.hpp"
 #include "window.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -486,7 +487,10 @@ bool SceneTree::physics_process(double p_time) {
 
 	call_group(SNAME("_picking_viewports"), SNAME("_process_picking"));
 
-	_process(true);
+	{
+		ZoneScopedN("SceneTree::_process (Physics)");
+		_process(true);
+	}
 
 	_flush_ugc();
 	MessageQueue::get_singleton()->flush(); //small little hack
@@ -511,19 +515,26 @@ bool SceneTree::process(double p_time) {
 	process_time = p_time;
 
 	if (multiplayer_poll) {
+		ZoneScopedN("SceneTree::process::multiplayer_poll");
 		multiplayer->poll();
 		for (KeyValue<NodePath, Ref<MultiplayerAPI>> &E : custom_multiplayers) {
 			E.value->poll();
 		}
 	}
 
-	emit_signal(SNAME("process_frame"));
+	{
+		ZoneScopedN("SceneTree::signal::process_frame");
+		emit_signal(SNAME("process_frame"));
+	}
 
 	MessageQueue::get_singleton()->flush(); //small little hack
 
 	flush_transform_notifications();
 
-	_process(false);
+	{
+		ZoneScopedN("SceneTree::_process");
+		_process(false);
+	}
 
 	_flush_ugc();
 	MessageQueue::get_singleton()->flush(); //small little hack
@@ -919,11 +930,13 @@ void SceneTree::_process_group(ProcessGroup *p_group, bool p_physics) {
 
 	if (p_physics) {
 		if (p_group->physics_node_order_dirty) {
+			ZoneScopedN("SceneTree::_process_group Physics Node Sort");
 			nodes.sort_custom<Node::ComparatorWithPhysicsPriority>();
 			p_group->physics_node_order_dirty = false;
 		}
 	} else {
 		if (p_group->node_order_dirty) {
+			ZoneScopedN("SceneTree::_process_group Node Sort");
 			nodes.sort_custom<Node::ComparatorWithPriority>();
 			p_group->node_order_dirty = false;
 		}
@@ -935,31 +948,34 @@ void SceneTree::_process_group(ProcessGroup *p_group, bool p_physics) {
 	uint32_t node_count = nodes_copy.size();
 	Node **nodes_ptr = (Node **)nodes_copy.ptr(); // Force cast, pointer will not change.
 
-	for (uint32_t i = 0; i < node_count; i++) {
-		Node *n = nodes_ptr[i];
-		if (nodes_removed_on_group_call.has(n)) {
-			// Node may have been removed during process, skip it.
-			// Keep in mind removals can only happen on the main thread.
-			continue;
-		}
+	{
+		ZoneScopedN("SceneTree::_process_group Process");
+		for (uint32_t i = 0; i < node_count; i++) {
+			Node *n = nodes_ptr[i];
+			if (nodes_removed_on_group_call.has(n)) {
+				// Node may have been removed during process, skip it.
+				// Keep in mind removals can only happen on the main thread.
+				continue;
+			}
 
-		if (!n->can_process() || !n->is_inside_tree()) {
-			continue;
-		}
+			if (!n->can_process() || !n->is_inside_tree()) {
+				continue;
+			}
 
-		if (p_physics) {
-			if (n->is_physics_processing_internal()) {
-				n->notification(Node::NOTIFICATION_INTERNAL_PHYSICS_PROCESS);
-			}
-			if (n->is_physics_processing()) {
-				n->notification(Node::NOTIFICATION_PHYSICS_PROCESS);
-			}
-		} else {
-			if (n->is_processing_internal()) {
-				n->notification(Node::NOTIFICATION_INTERNAL_PROCESS);
-			}
-			if (n->is_processing()) {
-				n->notification(Node::NOTIFICATION_PROCESS);
+			if (p_physics) {
+				if (n->is_physics_processing_internal()) {
+					n->notification(Node::NOTIFICATION_INTERNAL_PHYSICS_PROCESS);
+				}
+				if (n->is_physics_processing()) {
+					n->notification(Node::NOTIFICATION_PHYSICS_PROCESS);
+				}
+			} else {
+				if (n->is_processing_internal()) {
+					n->notification(Node::NOTIFICATION_INTERNAL_PROCESS);
+				}
+				if (n->is_processing()) {
+					n->notification(Node::NOTIFICATION_PROCESS);
+				}
 			}
 		}
 	}
@@ -968,6 +984,7 @@ void SceneTree::_process_group(ProcessGroup *p_group, bool p_physics) {
 }
 
 void SceneTree::_process_groups_thread(uint32_t p_index, bool p_physics) {
+	ZoneScopedN("SceneTree::_process_groups_thread");
 	Node::current_process_thread_group = local_process_group_cache[p_index]->owner;
 	_process_group(local_process_group_cache[p_index], p_physics);
 	Node::current_process_thread_group = nullptr;
@@ -1036,6 +1053,7 @@ void SceneTree::_process(bool p_physics) {
 						if (using_threads) {
 							local_process_group_cache.push_back(process_groups[j]);
 						} else {
+							ZoneScopedN("SceneTree::_process_group");
 							_process_group(process_groups[j], p_physics);
 						}
 					}

@@ -4007,7 +4007,6 @@ static uint64_t navigation_process_max = 0;
 // will terminate the program. In case of failure, the OS exit code needs
 // to be set explicitly here (defaults to EXIT_SUCCESS).
 bool Main::iteration() {
-	ZoneScoped;
 	iterating++;
 
 	const uint64_t ticks = OS::get_singleton()->get_ticks_usec();
@@ -4140,7 +4139,7 @@ bool Main::iteration() {
 	uint64_t process_begin = OS::get_singleton()->get_ticks_usec();
 
 	{
-		ZoneScopedN("Main process");
+		ZoneScopedN("MainLoop process");
 	if (OS::get_singleton()->get_main_loop()->process(process_step * time_scale)) {
 		exit = true;
 	}

@@ -102,6 +102,11 @@ void Node::_notification(int p_notification) {
 		} break;
 	}
 
+	// also include the path
+	if (is_inside_tree()) {
+		identifier += " at " + get_path();
+	}
+
 	// Set the Tracy zone name
 	CharString c = identifier.utf8();
 	ZoneName(c.get_data(), c.length());

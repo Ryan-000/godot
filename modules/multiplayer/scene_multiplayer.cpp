@@ -35,6 +35,7 @@
 
 #ifdef DEBUG_ENABLED
 #include "core/os/os.h"
+#include "modules/godot_tracy/tracy/public/tracy/Tracy.hpp"
 #endif
 
 #include <stdint.h>
@@ -67,6 +68,7 @@ void SceneMultiplayer::_update_status() {
 }
 
 Error SceneMultiplayer::poll() {
+	ZoneScopedN("Multiplayer Poll");
 	_update_status();
 	if (last_connection_status == MultiplayerPeer::CONNECTION_DISCONNECTED) {
 		return OK;
