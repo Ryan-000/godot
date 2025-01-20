@@ -33,6 +33,7 @@
 #include "../environment/gi.h"
 #include "light_storage.h"
 #include "mesh_storage.h"
+#include "modules/godot_tracy/tracy_profiler.h"
 #include "particles_storage.h"
 #include "texture_storage.h"
 
@@ -217,16 +218,29 @@ void Utilities::visibility_notifier_call(RID p_notifier, bool p_enter, bool p_de
 }
 
 /* TIMING */
-
+const uint64_t INVALID_TRACY_PROFILER_ZONE = -1;
+thread_local uint64_t tracyProfilerLastZone = INVALID_TRACY_PROFILER_ZONE;
 void Utilities::capture_timestamps_begin() {
 	RD::get_singleton()->capture_timestamp("Frame Begin");
+	tracyProfilerLastZone = INVALID_TRACY_PROFILER_ZONE;
 }
 
 void Utilities::capture_timestamp(const String &p_name) {
+	if (tracyProfilerLastZone != INVALID_TRACY_PROFILER_ZONE) {
+		TracyProfiler::get_singleton()->zone_end(tracyProfilerLastZone);
+		tracyProfilerLastZone = INVALID_TRACY_PROFILER_ZONE;
+	}
+	tracyProfilerLastZone = TracyProfiler::get_singleton()->zone_begin(p_name);
 	RD::get_singleton()->capture_timestamp(p_name);
 }
 
 uint32_t Utilities::get_captured_timestamps_count() const {
+	// hacky but used to determine end of frame.
+	if (tracyProfilerLastZone != INVALID_TRACY_PROFILER_ZONE) {
+		TracyProfiler::get_singleton()->zone_end(tracyProfilerLastZone);
+		tracyProfilerLastZone = INVALID_TRACY_PROFILER_ZONE;
+	}
+
 	return RD::get_singleton()->get_captured_timestamps_count();
 }
 
