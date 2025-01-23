@@ -903,6 +903,20 @@ void SceneTree::_notification(int p_notification) {
 		return;
 	}
 
+	if (skbidi_rizz_optimization_enabled) {
+		// we will ignore notifications if its enabled
+		switch (p_notification) {
+			case NOTIFICATION_APPLICATION_FOCUS_IN:
+			case NOTIFICATION_APPLICATION_FOCUS_OUT: {
+				return;
+			}
+			default: {
+				break;
+			}
+		}
+	}
+
+
 	switch (p_notification) {
 		case NOTIFICATION_TRANSLATION_CHANGED: {
 			get_root()->propagate_notification(p_notification);
@@ -1862,6 +1876,9 @@ bool SceneTree::is_multiplayer_poll_enabled() const {
 }
 
 void SceneTree::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("is_skibdi_rizz_optimization_enabled"), &SceneTree::is_skibdi_rizz_optimization_enabled);
+	ClassDB::bind_method(D_METHOD("set_skibdi_rizz_optimization_enabled", "enabled"), &SceneTree::set_skibdi_rizz_optimization_enabled, DEFVAL(true));
+
 	ClassDB::bind_method(D_METHOD("get_root"), &SceneTree::get_root);
 	ClassDB::bind_method(D_METHOD("has_group", "name"), &SceneTree::has_group);
 

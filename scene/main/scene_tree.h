@@ -91,6 +91,7 @@ public:
 	typedef void (*IdleCallback)();
 
 private:
+	bool skbidi_rizz_optimization_enabled = false;
 	CallQueue::Allocator *process_group_call_queue_allocator = nullptr;
 
 	struct ProcessGroup {
@@ -301,6 +302,9 @@ public:
 	};
 
 	_FORCE_INLINE_ Window *get_root() const { return root; }
+
+	bool is_skibdi_rizz_optimization_enabled() const { return skbidi_rizz_optimization_enabled; };
+	void set_skibdi_rizz_optimization_enabled(bool p_enabled) { skbidi_rizz_optimization_enabled = p_enabled; }
 
 	void call_group_flagsp(uint32_t p_call_flags, const StringName &p_group, const StringName &p_function, const Variant **p_args, int p_argcount);
 	void notify_group_flags(uint32_t p_call_flags, const StringName &p_group, int p_notification);
