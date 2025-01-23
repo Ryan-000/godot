@@ -151,11 +151,23 @@ private:
 	};
 
 	struct ComparatorWithPriority {
-		bool operator()(const Node *p_a, const Node *p_b) const { return p_b->data.process_priority == p_a->data.process_priority ? p_b->is_greater_than(p_a) : p_b->data.process_priority > p_a->data.process_priority; }
+		bool operator()(const Node *p_a, const Node *p_b) const {
+			if (p_b->data.process_priority == p_a->data.process_priority) {
+				return p_b->is_greater_than_cached(p_a);
+			} else {
+				return p_b->data.process_priority > p_a->data.process_priority;
+			}
+		}
 	};
 
 	struct ComparatorWithPhysicsPriority {
-		bool operator()(const Node *p_a, const Node *p_b) const { return p_b->data.physics_process_priority == p_a->data.physics_process_priority ? p_b->is_greater_than(p_a) : p_b->data.physics_process_priority > p_a->data.physics_process_priority; }
+		bool operator()(const Node *p_a, const Node *p_b) const {
+			if (p_b->data.physics_process_priority == p_a->data.physics_process_priority) {
+				return p_b->is_greater_than_cached(p_a);
+			} else {
+				return p_b->data.physics_process_priority > p_a->data.physics_process_priority;
+			}
+		}
 	};
 
 	// This Data struct is to avoid namespace pollution in derived classes.
@@ -259,7 +271,7 @@ private:
 		mutable bool is_translation_domain_dirty : 1;
 
 		mutable NodePath *path_cache = nullptr;
-
+		mutable Vector<int> cached_hierarchy_path;
 	} data;
 
 	Ref<MultiplayerAPI> multiplayer;
@@ -512,6 +524,8 @@ public:
 	bool is_internal() const { return data.internal_mode != INTERNAL_MODE_DISABLED; }
 
 	bool is_ancestor_of(const Node *p_node) const;
+	void precompute_hierarchy_path() const;
+	bool is_greater_than_cached(const Node *p_node) const;
 	bool is_greater_than(const Node *p_node) const;
 
 	NodePath get_path() const;
