@@ -710,6 +710,18 @@ void Window::_rect_changed_callback(const Rect2i &p_callback) {
 }
 
 void Window::_propagate_window_notification(Node *p_node, int p_notification) {
+	if (is_inside_tree() && get_tree()->is_skibdi_rizz_optimization_enabled()) {
+		switch (p_notification) {
+			case NOTIFICATION_WM_MOUSE_ENTER:
+			case NOTIFICATION_WM_MOUSE_EXIT:
+			case NOTIFICATION_WM_WINDOW_FOCUS_IN:
+			case NOTIFICATION_WM_WINDOW_FOCUS_OUT: {
+				return;
+			}
+		}
+	}
+
+
 	p_node->notification(p_notification);
 	for (int i = 0; i < p_node->get_child_count(); i++) {
 		Node *child = p_node->get_child(i);

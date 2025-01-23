@@ -304,6 +304,7 @@ void MultiplayerAPI::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("object_configuration_remove", "object", "configuration"), &MultiplayerAPI::object_configuration_remove);
 
 	ClassDB::bind_method(D_METHOD("get_peers"), &MultiplayerAPI::get_peer_ids);
+	ClassDB::bind_method(D_METHOD("is_peer_connected"), &MultiplayerAPI::is_peer_connected);
 
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "multiplayer_peer", PROPERTY_HINT_RESOURCE_TYPE, "MultiplayerPeer", PROPERTY_USAGE_NONE), "set_multiplayer_peer", "get_multiplayer_peer");
 
