@@ -628,6 +628,7 @@ void ShaderTextEditor::_update_warning_panel() {
 
 void ShaderTextEditor::_bind_methods() {
 	ADD_SIGNAL(MethodInfo("script_validated", PropertyInfo(Variant::BOOL, "valid")));
+	ClassDB::bind_method(D_METHOD("get_edited_shader"), &ShaderTextEditor::get_edited_shader);
 }
 
 ShaderTextEditor::ShaderTextEditor() {

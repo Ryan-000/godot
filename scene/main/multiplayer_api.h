@@ -74,6 +74,7 @@ public:
 
 	bool has_multiplayer_peer() { return get_multiplayer_peer().is_valid(); }
 	bool is_server() { return get_unique_id() == MultiplayerPeer::TARGET_PEER_SERVER; }
+	bool is_peer_connected(int p_peer_id) { return get_peer_ids().find(p_peer_id) != -1; }
 
 	MultiplayerAPI() {}
 	virtual ~MultiplayerAPI() {}
