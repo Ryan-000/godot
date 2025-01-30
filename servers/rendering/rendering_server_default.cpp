@@ -30,6 +30,7 @@
 
 #include "rendering_server_default.h"
 
+#include "core/config/project_settings.h"
 #include "core/os/os.h"
 #include "renderer_canvas_cull.h"
 #include "renderer_scene_cull.h"
@@ -177,7 +178,9 @@ void RenderingServerDefault::_draw(bool p_swap_buffers, double frame_step) {
 		}
 	}
 
-	RSG::utilities->update_memory_info();
+	if (GLOBAL_GET("optimizations/enable_update_memory_info")) {
+		RSG::utilities->update_memory_info();
+	}
 }
 
 void RenderingServerDefault::_run_post_draw_steps() {
