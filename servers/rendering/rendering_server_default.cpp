@@ -181,7 +181,9 @@ void RenderingServerDefault::_draw(bool p_swap_buffers, double frame_step) {
 		}
 	}
 
-	RSG::utilities->update_memory_info();
+	if (!GLOBAL_GET("optimizations/disable_update_memory_info")) {
+		RSG::utilities->update_memory_info();
+	}
 }
 
 void RenderingServerDefault::_run_post_draw_steps() {

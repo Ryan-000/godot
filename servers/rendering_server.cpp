@@ -3645,6 +3645,9 @@ void RenderingServer::init() {
 		GLOBAL_DEF("debug/shader_language/warnings/" + ShaderWarning::get_name_from_code((ShaderWarning::Code)i).to_lower(), true);
 	}
 #endif
+
+	// optimizations
+	GLOBAL_DEF("optimizations/disable_update_memory_info", false);
 }
 
 RenderingServer::~RenderingServer() {
