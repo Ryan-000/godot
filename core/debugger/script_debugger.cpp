@@ -79,6 +79,14 @@ bool ScriptDebugger::is_skipping_breakpoints() {
 	return skip_breakpoints;
 }
 
+void ScriptDebugger::set_skip_errors(bool p_skip_errors) {
+	skip_errors = p_skip_errors;
+}
+
+bool ScriptDebugger::is_skipping_errors() {
+	return skip_errors;
+}
+
 void ScriptDebugger::debug(ScriptLanguage *p_lang, bool p_can_continue, bool p_is_error_breakpoint) {
 	ScriptLanguage *prev = break_lang;
 	break_lang = p_lang;

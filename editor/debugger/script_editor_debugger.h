@@ -115,6 +115,7 @@ private:
 	int warning_count;
 
 	bool skip_breakpoints_value = false;
+	bool skip_errors_value = false;
 	Ref<Script> stack_script;
 
 	TabContainer *tabs = nullptr;
@@ -122,6 +123,7 @@ private:
 	Label *reason = nullptr;
 
 	Button *skip_breakpoints = nullptr;
+	Button *skip_errors = nullptr;
 	Button *copy = nullptr;
 	Button *step = nullptr;
 	Button *next = nullptr;
@@ -262,6 +264,7 @@ public:
 	void stop();
 
 	void debug_skip_breakpoints();
+	void debug_skip_errors();
 	void debug_copy();
 
 	void debug_next();
@@ -309,6 +312,7 @@ public:
 	void reload_all_scripts();
 	void reload_scripts(const Vector<String> &p_script_paths);
 
+	bool is_skip_errors();
 	bool is_skip_breakpoints();
 
 	virtual Size2 get_minimum_size() const override;
