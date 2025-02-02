@@ -132,6 +132,10 @@ Error EditorRun::run(const String &p_scene, const String &p_write_movie, const V
 		args.push_back(bpoints);
 	}
 
+	if (EditorDebuggerNode::get_singleton()->is_skip_errors()) {
+		args.push_back("--skip-errors");
+	}
+
 	if (EditorDebuggerNode::get_singleton()->is_skip_breakpoints()) {
 		args.push_back("--skip-breakpoints");
 	}
