@@ -317,6 +317,7 @@ class RenderForwardClustered : public RendererSceneRenderRD {
 		LocalVector<RID> implementation_uniform_buffers;
 
 		LightmapData lightmaps[MAX_LIGHTMAPS];
+		HashMap<RID, uint32_t> lightmap_id_map;
 		RID lightmap_ids[MAX_LIGHTMAPS];
 		bool lightmap_has_sh[MAX_LIGHTMAPS];
 		uint32_t lightmaps_used = 0;
@@ -331,6 +332,7 @@ class RenderForwardClustered : public RendererSceneRenderRD {
 		uint32_t max_lightmap_captures;
 		RID lightmap_capture_buffer;
 
+		HashMap<RID, uint32_t> voxelgi_id_map;
 		RID voxelgi_ids[MAX_VOXEL_GI_INSTANCESS];
 		uint32_t voxelgis_used = 0;
 

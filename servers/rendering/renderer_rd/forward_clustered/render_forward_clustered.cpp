@@ -878,11 +878,9 @@ void RenderForwardClustered::_fill_render_list(RenderListType p_render_list, con
 			// Setup GI
 			if (inst->lightmap_instance.is_valid()) {
 				int32_t lightmap_cull_index = -1;
-				for (uint32_t j = 0; j < scene_state.lightmaps_used; j++) {
-					if (scene_state.lightmap_ids[j] == inst->lightmap_instance) {
-						lightmap_cull_index = j;
-						break;
-					}
+				const uint32_t *found = scene_state.lightmap_id_map.getptr(inst->lightmap_instance);
+				if (found) {
+					lightmap_cull_index = *found;
 				}
 				if (lightmap_cull_index >= 0) {
 					inst->gi_offset_cache = inst->lightmap_slice_index << 16;
@@ -920,13 +918,13 @@ void RenderForwardClustered::_fill_render_list(RenderListType p_render_list, con
 				if (inst->voxel_gi_instances[0].is_valid()) {
 					uint32_t probe0_index = 0xFFFF;
 					uint32_t probe1_index = 0xFFFF;
-
-					for (uint32_t j = 0; j < scene_state.voxelgis_used; j++) {
-						if (scene_state.voxelgi_ids[j] == inst->voxel_gi_instances[0]) {
-							probe0_index = j;
-						} else if (scene_state.voxelgi_ids[j] == inst->voxel_gi_instances[1]) {
-							probe1_index = j;
-						}
+					if (inst->voxel_gi_instances[0].is_valid()) {
+						const uint32_t *found0 = scene_state.voxelgi_id_map.getptr(inst->voxel_gi_instances[0]);
+						probe0_index = found0 ? *found0 : 0xFFFF;
+					}
+					if (inst->voxel_gi_instances[1].is_valid()) {
+						const uint32_t *found1 = scene_state.voxelgi_id_map.getptr(inst->voxel_gi_instances[1]);
+						probe1_index = found1 ? *found1 : 0xFFFF;
 					}
 
 					if (probe0_index == 0xFFFF && probe1_index != 0xFFFF) {
@@ -1087,8 +1085,11 @@ void RenderForwardClustered::_fill_render_list(RenderListType p_render_list, con
 
 void RenderForwardClustered::_setup_voxelgis(const PagedArray<RID> &p_voxelgis) {
 	scene_state.voxelgis_used = MIN(p_voxelgis.size(), uint32_t(MAX_VOXEL_GI_INSTANCESS));
+	scene_state.voxelgi_id_map.clear();
+	scene_state.voxelgi_id_map.reserve(scene_state.voxelgis_used);
 	for (uint32_t i = 0; i < scene_state.voxelgis_used; i++) {
 		scene_state.voxelgi_ids[i] = p_voxelgis[i];
+		scene_state.voxelgi_id_map[p_voxelgis[i]] = i;
 	}
 }
 
@@ -1120,6 +1121,12 @@ void RenderForwardClustered::_setup_lightmaps(const RenderDataRD *p_render_data,
 	}
 	if (scene_state.lightmaps_used > 0) {
 		RD::get_singleton()->buffer_update(scene_state.lightmap_buffer, 0, sizeof(LightmapData) * scene_state.lightmaps_used, scene_state.lightmaps);
+	}
+
+	scene_state.lightmap_id_map.clear();
+	scene_state.lightmap_id_map.reserve(scene_state.lightmaps_used);
+	for (uint32_t i = 0; i < scene_state.lightmaps_used; i++) {
+		scene_state.lightmap_id_map[scene_state.lightmap_ids[i]] = i;
 	}
 }
 
