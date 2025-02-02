@@ -263,11 +263,16 @@ bool GDScriptLanguage::debug_break_parse(const String &p_file, int p_line, const
 
 bool GDScriptLanguage::debug_break(const String &p_error, bool p_allow_continue) {
 	if (EngineDebugger::is_active()) {
+		bool is_error = p_error != "Breakpoint";
+		if (is_error && EngineDebugger::get_script_debugger()->is_skipping_errors()) {
+			// we still want to print the error even though we dont break on it
+			return false;
+		}
+
 		_debug_parse_err_line = -1;
 		_debug_parse_err_file = "";
 		_debug_error = p_error;
-		bool is_error_breakpoint = p_error != "Breakpoint";
-		EngineDebugger::get_script_debugger()->debug(this, p_allow_continue, is_error_breakpoint);
+		EngineDebugger::get_script_debugger()->debug(this, p_allow_continue, is_error);
 		// Because this is thread local, clear the memory afterwards.
 		_debug_parse_err_file = String();
 		_debug_error = String();

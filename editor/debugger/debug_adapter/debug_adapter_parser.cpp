@@ -192,6 +192,10 @@ Dictionary DebugAdapterParser::_launch_process(const Dictionary &p_params) const
 		dbg->debug_skip_breakpoints();
 	}
 
+	if ((bool)args["noDebug"] != dbg->is_skip_errors()) {
+		dbg->debug_skip_errors();
+	}
+
 	String platform_string = args.get("platform", "host");
 	if (platform_string == "host") {
 		EditorRunBar::get_singleton()->play_main_scene();

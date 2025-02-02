@@ -574,6 +574,10 @@ void EditorDebuggerNode::_breaked(bool p_breaked, bool p_can_debug, const String
 	emit_signal(SNAME("breaked"), p_breaked, p_can_debug);
 }
 
+bool EditorDebuggerNode::is_skip_errors() const {
+	return get_current_debugger()->is_skip_errors();
+}
+
 bool EditorDebuggerNode::is_skip_breakpoints() const {
 	return get_current_debugger()->is_skip_breakpoints();
 }

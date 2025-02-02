@@ -186,6 +186,7 @@ public:
 
 	bool get_debug_with_external_editor() { return debug_with_external_editor; }
 
+	bool is_skip_errors() const;
 	bool is_skip_breakpoints() const;
 	void set_breakpoint(const String &p_path, int p_line, bool p_enabled);
 	void set_breakpoints(const String &p_path, const Array &p_lines);

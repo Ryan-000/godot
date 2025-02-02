@@ -536,6 +536,9 @@ void RemoteDebugger::debug(bool p_can_continue, bool p_is_error_breakpoint) {
 			} else if (command == "set_skip_breakpoints") {
 				ERR_FAIL_COND(data.is_empty());
 				script_debugger->set_skip_breakpoints(data[0]);
+			} else if (command == "set_skip_errors") {
+				ERR_FAIL_COND(data.is_empty());
+				script_debugger->set_skip_errors(data[0]);
 			} else {
 				bool captured = false;
 				ERR_CONTINUE(_try_capture(command, data, captured) != OK);
@@ -640,6 +643,9 @@ Error RemoteDebugger::_core_capture(const String &p_cmd, const Array &p_data, bo
 	} else if (p_cmd == "set_skip_breakpoints") {
 		ERR_FAIL_COND_V(p_data.is_empty(), ERR_INVALID_DATA);
 		script_debugger->set_skip_breakpoints(p_data[0]);
+	} else if (p_cmd == "set_skip_errors") {
+		ERR_FAIL_COND_V(p_data.is_empty(), ERR_INVALID_DATA);
+		script_debugger->set_skip_errors(p_data[0]);
 	} else if (p_cmd == "break") {
 		script_debugger->debug(script_debugger->get_break_language());
 	} else {
