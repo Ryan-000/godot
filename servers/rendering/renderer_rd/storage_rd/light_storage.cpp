@@ -1544,6 +1544,9 @@ bool LightStorage::reflection_probe_instance_begin_render(RID p_instance, RID p_
 
 	if (rpi->atlas_index != -1) { // should we fail if this is still -1 ?
 		atlas->reflections.write[rpi->atlas_index].owner = p_instance;
+	} else {
+		//no space
+		return false;
 	}
 
 	rpi->atlas = p_reflection_atlas;

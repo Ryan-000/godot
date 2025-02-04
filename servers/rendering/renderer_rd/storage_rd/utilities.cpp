@@ -226,21 +226,24 @@ void Utilities::capture_timestamps_begin() {
 }
 
 void Utilities::capture_timestamp(const String &p_name) {
+#ifdef MODULE_GODOT_TRACY_ENABLED
 	if (tracyProfilerLastZone != INVALID_TRACY_PROFILER_ZONE) {
 		TracyProfiler::get_singleton()->zone_end(tracyProfilerLastZone);
 		tracyProfilerLastZone = INVALID_TRACY_PROFILER_ZONE;
 	}
 	tracyProfilerLastZone = TracyProfiler::get_singleton()->zone_begin(p_name);
+#endif
 	RD::get_singleton()->capture_timestamp(p_name);
 }
 
 uint32_t Utilities::get_captured_timestamps_count() const {
+#ifdef MODULE_GODOT_TRACY_ENABLED
 	// hacky but used to determine end of frame.
 	if (tracyProfilerLastZone != INVALID_TRACY_PROFILER_ZONE) {
 		TracyProfiler::get_singleton()->zone_end(tracyProfilerLastZone);
 		tracyProfilerLastZone = INVALID_TRACY_PROFILER_ZONE;
 	}
-
+#endif
 	return RD::get_singleton()->get_captured_timestamps_count();
 }
 
