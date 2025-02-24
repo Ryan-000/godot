@@ -189,6 +189,8 @@ void WorkerThreadPool::_process_task(Task *p_task) {
 
 void WorkerThreadPool::_thread_function(void *p_user) {
 	ThreadData *thread_data = (ThreadData *)p_user;
+//	Thread::set_name("Worker-" + itos(thread_data->index));
+
 	while (true) {
 		Task *task_to_process = nullptr;
 		{

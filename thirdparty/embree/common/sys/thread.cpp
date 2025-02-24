@@ -389,7 +389,8 @@ namespace embree
     /* create thread */
     pthread_t* tid = new pthread_t;
     if (pthread_create(tid,&attr,(void*(*)(void*))threadStartup,new ThreadStartupData(f,arg,threadID)) != 0) {
-      pthread_attr_destroy(&attr);
+      pthread_setname_np(*tid, "Embree");
+	  pthread_attr_destroy(&attr);
       delete tid; 
       FATAL("pthread_create failed");
     }

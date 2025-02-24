@@ -119,6 +119,12 @@ struct TaskSchedulerImpl
         for (uint32_t i = 0; i < threadCnt; ++i) {
             *threads.data[i] = thread([&, i] { run(i); });
         }
+
+		// name threads
+		for (uint32_t i = 0; i < threadCnt; ++i) {
+			auto name = "ThorVG-" + to_string(i);
+			pthread_setname_np(threads.data[i]->native_handle(), name.c_str());
+		}
     }
 
     ~TaskSchedulerImpl()

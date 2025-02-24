@@ -2569,6 +2569,7 @@ Error Main::setup2(bool p_show_boot_logo) {
 
 	Thread::make_main_thread(); // Make whatever thread call this the main thread.
 	set_current_thread_safe_for_nodes(true);
+//	Thread::set_name("Main Thread");
 
 	// Don't use rich formatting to prevent ANSI escape codes from being written to log files.
 	print_header(false);

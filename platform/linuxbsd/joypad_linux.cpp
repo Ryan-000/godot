@@ -130,6 +130,7 @@ JoypadLinux::~JoypadLinux() {
 }
 
 void JoypadLinux::monitor_joypads_thread_func(void *p_user) {
+//	Thread::set_name("JoypadMonitor");
 	if (p_user) {
 		JoypadLinux *joy = static_cast<JoypadLinux *>(p_user);
 		joy->monitor_joypads_thread_run();
@@ -485,6 +486,7 @@ float JoypadLinux::axis_correct(const input_absinfo *p_abs, int p_value) const {
 }
 
 void JoypadLinux::joypad_events_thread_func(void *p_user) {
+//	Thread::set_name("JoypadEvents");
 	if (p_user) {
 		JoypadLinux *joy = (JoypadLinux *)p_user;
 		joy->joypad_events_thread_run();
