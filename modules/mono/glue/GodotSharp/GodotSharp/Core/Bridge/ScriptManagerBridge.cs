@@ -516,17 +516,22 @@ namespace Godot.Bridge
         [UnmanagedCallersOnly]
         internal static unsafe void GetOrCreateScriptBridgeForPath(godot_string* scriptPath, godot_ref* outScript)
         {
-            string scriptPathStr = Marshaling.ConvertStringToManaged(*scriptPath);
+            try {
+                string scriptPathStr = Marshaling.ConvertStringToManaged(*scriptPath);
 
-            if (!_pathTypeBiMap.TryGetScriptType(scriptPathStr, out Type? scriptType))
-            {
-                NativeFuncs.godotsharp_internal_new_csharp_script(outScript);
-                return;
+                if (!_pathTypeBiMap.TryGetScriptType(scriptPathStr, out Type? scriptType))
+                {
+                    NativeFuncs.godotsharp_internal_new_csharp_script(outScript);
+                    return;
+                }
+
+                Debug.Assert(!scriptType.IsGenericTypeDefinition, $"Cannot get or create script for a generic type definition '{scriptType.FullName}'. Path: '{scriptPathStr}'.");
+
+                GetOrCreateScriptBridgeForType(scriptType, outScript);
+            } catch (Exception e) {
+                GD.PushError("Cannot get or create script for path '{0}'. Error: {1}", Marshaling.ConvertStringToManaged(*scriptPath), e);
+                ExceptionUtils.LogException(e);
             }
-
-            Debug.Assert(!scriptType.IsGenericTypeDefinition, $"Cannot get or create script for a generic type definition '{scriptType.FullName}'. Path: '{scriptPathStr}'.");
-
-            GetOrCreateScriptBridgeForType(scriptType, outScript);
         }
 
         private static unsafe void GetOrCreateScriptBridgeForType(Type scriptType, godot_ref* outScript)
