@@ -115,6 +115,18 @@ bool ResourceLoader::has_cached(const String &p_path) {
 	return ResourceCache::has(local_path);
 }
 
+TypedArray<Resource> ResourceLoader::get_cached_resources() const {
+	List<Ref<Resource>> resources;
+	ResourceCache::get_cached_resources(&resources);
+
+	TypedArray<Resource> ret;
+	for (const Ref<Resource> &E : resources) {
+		ret.push_back(E);
+	}
+
+	return ret;
+}
+
 bool ResourceLoader::exists(const String &p_path, const String &p_type_hint) {
 	return ::ResourceLoader::exists(p_path, p_type_hint);
 }
@@ -143,6 +155,7 @@ void ResourceLoader::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_abort_on_missing_resources", "abort"), &ResourceLoader::set_abort_on_missing_resources);
 	ClassDB::bind_method(D_METHOD("get_dependencies", "path"), &ResourceLoader::get_dependencies);
 	ClassDB::bind_method(D_METHOD("has_cached", "path"), &ResourceLoader::has_cached);
+	ClassDB::bind_method(D_METHOD("get_cached_resources"), &ResourceLoader::get_cached_resources);
 	ClassDB::bind_method(D_METHOD("exists", "path", "type_hint"), &ResourceLoader::exists, DEFVAL(""));
 	ClassDB::bind_method(D_METHOD("get_resource_uid", "path"), &ResourceLoader::get_resource_uid);
 	ClassDB::bind_method(D_METHOD("get_resource_type", "path"), &ResourceLoader::get_resource_type);
