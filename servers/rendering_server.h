@@ -184,6 +184,7 @@ public:
 		Image::Format format;
 		int64_t bytes;
 		String path;
+		TextureType type;
 	};
 
 	virtual void texture_debug_usage(List<TextureInfo> *r_info) = 0;
