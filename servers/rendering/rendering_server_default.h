@@ -317,6 +317,8 @@ public:
 
 	FUNC1(mesh_clear, RID)
 
+	FUNC1(mesh_debug_usage, List<MeshInfo> *)
+
 	/* MULTIMESH API */
 
 	FUNCRIDSPLIT(multimesh)

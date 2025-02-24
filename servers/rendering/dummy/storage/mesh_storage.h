@@ -130,6 +130,7 @@ public:
 
 	virtual void mesh_set_shadow_mesh(RID p_mesh, RID p_shadow_mesh) override {}
 	virtual void mesh_clear(RID p_mesh) override;
+	virtual void mesh_debug_usage(List<RS::MeshInfo> *r_info) override {};
 
 	/* MESH INSTANCE */
 
