@@ -497,7 +497,6 @@ bool SceneTreeDock::_cyclical_dependency_exists(const String &p_target_scene_pat
 	if (_track_inherit(p_target_scene_path, p_desired_node)) {
 		return true;
 	}
-
 	for (int i = 0; i < childCount; i++) {
 		Node *child = p_desired_node->get_child(i);
 
@@ -1150,9 +1149,9 @@ void SceneTreeDock::_tool_selected(int p_tool, bool p_confirm_override) {
 				accept->popup_centered();
 				break;
 			}
-
-			if (tocopy != editor_data->get_edited_scene_root() && !tocopy->get_scene_file_path().is_empty()) {
-				accept->set_text(TTR("Can't save the branch of an already instantiated scene.\nTo create a variation of a scene, you can make an inherited scene based on the instantiated scene using Scene > New Inherited Scene... instead."));
+			
+			if (tocopy != editor_data->get_edited_scene_root() && !tocopy->get_scene_file_path().is_empty() && !editor_data->get_edited_scene_root()->is_editable_instance(tocopy)) {
+				accept->set_text(TTR("Can't save the branch of an already instantiated scene.\nTo create a variation of a scene, you can enable Editable Children and try again, or make an inherited scene based on the instantiated scene using Scene > New Inherited Scene... instead."));
 				accept->popup_centered();
 				break;
 			}
@@ -1169,26 +1168,49 @@ void SceneTreeDock::_tool_selected(int p_tool, bool p_confirm_override) {
 				break;
 			}
 
-			new_scene_from_dialog->set_file_mode(EditorFileDialog::FILE_MODE_SAVE_FILE);
+
+			EditorFileDialog* dialog;
+			bool is_creating_inherited_scene_from_branch = tocopy != editor_data->get_edited_scene_root() && !tocopy->get_scene_file_path().is_empty();
+			if (is_creating_inherited_scene_from_branch) {
+				dialog = new_inherited_scene_branch_from_dialog;
+			} else {
+				dialog = new_scene_from_dialog;
+			}
+
+			dialog->set_file_mode(EditorFileDialog::FILE_MODE_SAVE_FILE);
 
 			List<String> extensions;
 			Ref<PackedScene> sd = memnew(PackedScene);
 			ResourceSaver::get_recognized_extensions(sd, &extensions);
-			new_scene_from_dialog->clear_filters();
+			dialog->clear_filters();
 			for (const String &extension : extensions) {
-				new_scene_from_dialog->add_filter("*." + extension, extension.to_upper());
+				dialog->add_filter("*." + extension, extension.to_upper());
 			}
 
-			String existing;
+			String scene_file_name;
 			if (extensions.size()) {
 				String root_name(tocopy->get_name());
 				root_name = EditorNode::adjust_scene_name_casing(root_name);
-				existing = root_name + "." + extensions.front()->get().to_lower();
+				scene_file_name = root_name + "." + extensions.front()->get().to_lower();
 			}
-			new_scene_from_dialog->set_current_path(existing);
 
-			new_scene_from_dialog->set_title(TTR("Save New Scene As..."));
-			new_scene_from_dialog->popup_file_dialog();
+			String file_path = "";
+			if (is_creating_inherited_scene_from_branch) {
+				file_path = tocopy->get_scene_file_path();
+			} else {
+				file_path = scene->get_scene_file_path();
+			}
+			file_path = file_path.get_base_dir().path_join(scene_file_name);
+
+			dialog->set_current_path(file_path);
+
+			if (is_creating_inherited_scene_from_branch) {
+				dialog->set_title(TTR("Save Branch as Inherited Scene"));
+			} else {
+				dialog->set_title(TTR("Save New Scene As..."));
+			}
+
+			dialog->popup_file_dialog();
 		} break;
 		case TOOL_COPY_NODE_PATH: {
 			List<Node *> selection = editor_selection->get_selected_node_list();
@@ -3420,6 +3442,70 @@ void SceneTreeDock::_new_scene_from(const String &p_file) {
 	}
 }
 
+void SceneTreeDock::_new_inherited_scene_from(const String &p_file) {
+	List<Node *> selection = editor_selection->get_selected_node_list();
+
+	if (selection.size() != 1) {
+		accept->set_text(TTR("This operation requires a single selected node."));
+		accept->popup_centered();
+		return;
+	}
+
+	if (EditorNode::get_singleton()->is_scene_open(p_file)) {
+		accept->set_text(TTR("Can't overwrite scene that is still open!"));
+		accept->popup_centered();
+		return;
+	}
+
+	Node *instance_to_save_and_replace = selection.front()->get();
+
+	String scene_file_path = instance_to_save_and_replace->get_scene_file_path();
+
+	Error load_error;
+	Ref<PackedScene> to_inherit_scene_data = ResourceLoader::load(scene_file_path, "", ResourceFormatLoader::CACHE_MODE_REUSE, &load_error);
+	if (load_error != OK) {
+		accept->set_text(TTR("Error loading scene data at path: ") + scene_file_path);
+		accept->popup_centered();
+		return;
+	}
+
+	//Node *new_scene = to_inherit_scene_data->instantiate(PackedScene::GEN_EDIT_STATE_MAIN_INHERITED);
+//	Node* duplicated_scene = instance_to_save_and_replace->duplicate();
+	HashMap<const Node *, Node *> duplimap;
+	Node *duplicated_scene = instance_to_save_and_replace->duplicate_from_editor(duplimap);
+
+
+	Ref<SceneState> state = to_inherit_scene_data->get_state();
+	state->set_path(scene_file_path);
+	duplicated_scene->set_scene_inherited_state(state);
+	duplicated_scene->set_scene_file_path(String());
+	duplicated_scene->set_scene_instance_state(Ref<SceneState>());
+
+	Ref<PackedScene> inherited_branch_scene_data = memnew(PackedScene);
+	Error pack_error = inherited_branch_scene_data->pack(duplicated_scene);
+	memdelete(duplicated_scene);
+
+	if (pack_error != OK) {
+		accept->set_text(TTR("Error packing scene data."));
+		accept->popup_centered();
+		return;
+	}
+
+	int flg = 0;
+	if (EDITOR_GET("filesystem/on_save/compress_binary_resources")) {
+		flg |= ResourceSaver::FLAG_COMPRESS;
+	}
+
+	Error save_error = ResourceSaver::save(inherited_branch_scene_data, p_file, flg);
+	if (save_error != OK) {
+		accept->set_text(TTR("Error saving scene."));
+		accept->popup_centered();
+		return;
+	}
+	
+	_replace_with_branch_scene(p_file, instance_to_save_and_replace);
+}
+
 void SceneTreeDock::_set_node_owner_recursive(Node *p_node, Node *p_owner, const HashMap<const Node *, Node *> &p_inverse_duplimap) {
 	HashMap<const Node *, Node *>::ConstIterator E = p_inverse_duplimap.find(p_node);
 
@@ -4832,6 +4918,11 @@ SceneTreeDock::SceneTreeDock(Node *p_scene_root, EditorSelection *p_editor_selec
 	new_scene_from_dialog->add_option(TTR("Reset Scale"), Vector<String>(), false);
 	add_child(new_scene_from_dialog);
 	new_scene_from_dialog->connect("file_selected", callable_mp(this, &SceneTreeDock::_new_scene_from));
+
+	new_inherited_scene_branch_from_dialog = memnew(EditorFileDialog);
+	new_inherited_scene_branch_from_dialog->set_file_mode(EditorFileDialog::FILE_MODE_SAVE_FILE);
+	add_child(new_inherited_scene_branch_from_dialog);
+	new_inherited_scene_branch_from_dialog->connect("file_selected", callable_mp(this, &SceneTreeDock::_new_inherited_scene_from));
 
 	menu = memnew(PopupMenu);
 	add_child(menu);
