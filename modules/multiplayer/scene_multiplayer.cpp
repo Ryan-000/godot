@@ -68,7 +68,9 @@ void SceneMultiplayer::_update_status() {
 }
 
 Error SceneMultiplayer::poll() {
+#ifdef MODULE_GODOT_TRACY_ENABLED
 	ZoneScopedN("Multiplayer Poll");
+#endif
 	_update_status();
 	if (last_connection_status == MultiplayerPeer::CONNECTION_DISCONNECTED) {
 		return OK;
