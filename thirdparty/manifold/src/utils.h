@@ -35,7 +35,7 @@
 
 #include "./parallel.h"
 
-#if __has_include(<tracy/Tracy.hpp>)
+#if __has_include(<tracy/Tracy.hpp>) && false
 #include <tracy/Tracy.hpp>
 #else
 #define FrameMarkStart(x)
