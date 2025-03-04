@@ -102,6 +102,19 @@ void ScriptEditorDebugger::debug_skip_breakpoints() {
 	_put_msg("set_skip_breakpoints", msg, debugging_thread_id != Thread::UNASSIGNED_ID ? debugging_thread_id : Thread::MAIN_ID);
 }
 
+void ScriptEditorDebugger::debug_skip_errors() {
+	skip_errors_value = !skip_errors_value;
+	if (skip_errors_value) {
+		skip_errors->set_button_icon(get_editor_theme_icon(SNAME("DebugSkipErrorsOn")));
+	} else {
+		skip_errors->set_button_icon(get_editor_theme_icon(SNAME("DebugSkipErrorsOff")));
+	}
+
+	Array msg;
+	msg.push_back(skip_errors_value);
+	_put_msg("set_skip_errors", msg, debugging_thread_id != Thread::UNASSIGNED_ID ? debugging_thread_id : Thread::MAIN_ID);
+}
+
 void ScriptEditorDebugger::debug_next() {
 	ERR_FAIL_COND(!is_breaked());
 
@@ -886,6 +899,7 @@ void ScriptEditorDebugger::_notification(int p_what) {
 		case NOTIFICATION_THEME_CHANGED: {
 			tabs->add_theme_style_override(SceneStringName(panel), get_theme_stylebox(SNAME("DebuggerPanel"), EditorStringName(EditorStyles)));
 
+			skip_errors->set_button_icon(get_editor_theme_icon(skip_errors_value ? SNAME("DebugSkipErrorsOn") : SNAME("DebugSkipErrorsOff")));
 			skip_breakpoints->set_button_icon(get_editor_theme_icon(skip_breakpoints_value ? SNAME("DebugSkipBreakpointsOn") : SNAME("DebugSkipBreakpointsOff")));
 			copy->set_button_icon(get_editor_theme_icon(SNAME("ActionCopy")));
 			step->set_button_icon(get_editor_theme_icon(SNAME("DebugStep")));
@@ -1563,6 +1577,10 @@ void ScriptEditorDebugger::reload_scripts(const Vector<String> &p_script_paths) 
 	_put_msg("reload_scripts", Variant(p_script_paths).operator Array(), debugging_thread_id != Thread::UNASSIGNED_ID ? debugging_thread_id : Thread::MAIN_ID);
 }
 
+bool ScriptEditorDebugger::is_skip_errors() {
+	return skip_errors_value;
+}
+
 bool ScriptEditorDebugger::is_skip_breakpoints() {
 	return skip_breakpoints_value;
 }
@@ -1860,6 +1878,12 @@ ScriptEditorDebugger::ScriptEditorDebugger() {
 		reason->set_mouse_filter(Control::MOUSE_FILTER_PASS);
 
 		hbc->add_child(memnew(VSeparator));
+
+		skip_errors = memnew(Button);
+		skip_errors->set_theme_type_variation("FlatButton");
+		hbc->add_child(skip_errors);
+		skip_errors->set_tooltip_text(TTR("Ignore Errors"));
+		skip_errors->connect(SceneStringName(pressed), callable_mp(this, &ScriptEditorDebugger::debug_skip_errors));
 
 		skip_breakpoints = memnew(Button);
 		skip_breakpoints->set_theme_type_variation(SceneStringName(FlatButton));
