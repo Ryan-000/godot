@@ -545,6 +545,12 @@ void ScriptEditorDebugger::_parse_message(const String &p_msg, uint64_t p_thread
 		bool e;
 		String time = String("%d:%02d:%02d:%03d").sprintf(time_vals, &e);
 
+
+		bool filtered = EditorDebuggerNode::get_singleton()->plugins_filter_error(this, oe);
+		if (filtered) {
+			goto end;
+		}
+
 		// Rest of the error data.
 		bool source_is_project_file = oe.source_file.begins_with("res://");
 
@@ -838,6 +844,8 @@ void ScriptEditorDebugger::_parse_message(const String &p_msg, uint64_t p_thread
 			WARN_PRINT("Unknown message: " + p_msg);
 		}
 	}
+
+	end:;
 }
 
 void ScriptEditorDebugger::_set_reason_text(const String &p_reason, MessageType p_type) {
