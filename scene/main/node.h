@@ -149,11 +149,23 @@ private:
 	};
 
 	struct ComparatorWithPriority {
-		bool operator()(const Node *p_a, const Node *p_b) const { return p_b->data.process_priority == p_a->data.process_priority ? p_b->is_greater_than(p_a) : p_b->data.process_priority > p_a->data.process_priority; }
+		bool operator()(const Node *p_a, const Node *p_b) const {
+			if (p_b->data.process_priority == p_a->data.process_priority) {
+				return p_b->is_greater_than_cached(p_a);
+			} else {
+				return p_b->data.process_priority > p_a->data.process_priority;
+			}
+		}
 	};
 
 	struct ComparatorWithPhysicsPriority {
-		bool operator()(const Node *p_a, const Node *p_b) const { return p_b->data.physics_process_priority == p_a->data.physics_process_priority ? p_b->is_greater_than(p_a) : p_b->data.physics_process_priority > p_a->data.physics_process_priority; }
+		bool operator()(const Node *p_a, const Node *p_b) const {
+			if (p_b->data.physics_process_priority == p_a->data.physics_process_priority) {
+				return p_b->is_greater_than_cached(p_a);
+			} else {
+				return p_b->data.physics_process_priority > p_a->data.physics_process_priority;
+			}
+		}
 	};
 
 	// This Data struct is to avoid namespace pollution in derived classes.
@@ -258,7 +270,7 @@ private:
 		mutable bool is_translation_domain_dirty = true;
 
 		mutable NodePath *path_cache = nullptr;
-
+		mutable Vector<int> cached_hierarchy_path;
 	} data;
 
 	Ref<MultiplayerAPI> multiplayer;
@@ -469,6 +481,7 @@ public:
 	bool has_node(const NodePath &p_path) const;
 	Node *get_node(const NodePath &p_path) const;
 	Node *get_node_or_null(const NodePath &p_path) const;
+	Node *find_child_of_type(const Variant &p_type) const;
 	Node *find_child(const String &p_pattern, bool p_recursive = true, bool p_owned = true) const;
 	TypedArray<Node> find_children(const String &p_pattern, const String &p_type = "", bool p_recursive = true, bool p_owned = true) const;
 	bool has_node_and_resource(const NodePath &p_path) const;
@@ -489,6 +502,8 @@ public:
 	_FORCE_INLINE_ bool is_inside_tree() const { return data.inside_tree; }
 
 	bool is_ancestor_of(const Node *p_node) const;
+	void precompute_hierarchy_path() const;
+	bool is_greater_than_cached(const Node *p_node) const;
 	bool is_greater_than(const Node *p_node) const;
 
 	NodePath get_path() const;

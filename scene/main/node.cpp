@@ -42,6 +42,7 @@
 #include "scene/main/window.h"
 #include "scene/resources/packed_scene.h"
 #include "viewport.h"
+#include "modules/gdscript/gdscript_utility_functions.h"
 
 #include <stdint.h>
 
@@ -184,6 +185,8 @@ void Node::_notification(int p_notification) {
 				memdelete(data.path_cache);
 				data.path_cache = nullptr;
 			}
+			// reset the cached_hierarchy_path
+			data.cached_hierarchy_path.clear();
 		} break;
 
 		case NOTIFICATION_SUSPENDED:
@@ -535,6 +538,9 @@ void Node::_move_child(Node *p_child, int p_index, bool p_ignore_end) {
 			data.children_cache[i]->data.index = i;
 		}
 	}
+
+	data.cached_hierarchy_path.clear();
+
 	// notification second
 	move_child_notify(p_child);
 	notification(NOTIFICATION_CHILD_ORDER_CHANGED);
@@ -1886,6 +1892,30 @@ bool Node::has_node(const NodePath &p_path) const {
 	return get_node_or_null(p_path) != nullptr;
 }
 
+
+Node *Node::find_child_of_type(const Variant &p_type) const {
+	ERR_THREAD_GUARD_V(nullptr);
+	_update_children_cache();
+	Node *const *cptr = data.children_cache.ptr();
+	int ccount = data.children_cache.size();
+	for (int i = 0; i < ccount; i++) {
+		Node* node = cptr[i];
+
+		// if p_type is a string, check if the node is an instance of the class
+		if (p_type.get_type() == Variant::STRING || p_type.get_type() == Variant::STRING_NAME) {
+			if (node->is_class(p_type)) {
+				return node;
+			}
+		} else {
+			// if p_type is a class, check if the node is an instance of the class
+			if (GDScriptUtilityFunctions::is_instance_of(node, p_type)) {
+				return node;
+			}
+		}
+	}
+	return nullptr;
+}
+
 // Finds the first child node (in tree order) whose name matches the given pattern.
 // Can be recursive or not, and limited to owned nodes.
 Node *Node::find_child(const String &p_pattern, bool p_recursive, bool p_owned) const {
@@ -2045,6 +2075,61 @@ bool Node::is_ancestor_of(const Node *p_node) const {
 
 	return false;
 }
+
+void Node::precompute_hierarchy_path() const {
+	if (data.cached_hierarchy_path.size() == data.depth) {
+		// Skip if already cached and valid
+		return;
+	}
+
+	// Resize to avoid reallocation
+	data.cached_hierarchy_path.resize(data.depth);
+
+	// Fill the path from the node to the root
+	const Node *n = this;
+	for (int i = data.depth - 1; i >= 0; --i) {
+		data.cached_hierarchy_path.write[i] = n->get_index();
+		n = n->data.parent;
+	}
+}
+
+bool Node::is_greater_than_cached(const Node *p_node) const {
+	// Ensure paths are precomputed
+	precompute_hierarchy_path();
+	p_node->precompute_hierarchy_path();
+
+	const Vector<int> &this_path = data.cached_hierarchy_path;
+	const Vector<int> &that_path = p_node->data.cached_hierarchy_path;
+
+	const int this_size = this_path.size();
+	const int that_size = that_path.size();
+	const int min_size = MIN(this_size, that_size);
+
+	const int *this_data = this_path.ptr();
+	const int *that_data = that_path.ptr();
+
+	int cmp_result = memcmp(this_data, that_data, min_size * sizeof(int));
+	if (cmp_result != 0) {
+		// cmp_result > 0 means the first mismatching byte in this_data is bigger
+		// cmp_result < 0 means the first mismatching byte in this_data is smaller
+		return cmp_result > 0;
+	}
+
+	return this_size > that_size;
+//
+//	// Compare paths lexicographically
+//	int min_size = MIN(this_path.size(), that_path.size());
+//	for (int i = 0; i < min_size; ++i) {
+//		if (this_path[i] != that_path[i]) {
+//			return this_path[i] > that_path[i];
+//		}
+//	}
+
+	// If paths are equal up to the shortest length, the deeper node is greater
+//	return this_path.size() > that_path.size();
+}
+
+
 
 bool Node::is_greater_than(const Node *p_node) const {
 	ERR_FAIL_NULL_V(p_node, false);
@@ -3624,6 +3709,7 @@ void Node::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_node", "path"), &Node::get_node);
 	ClassDB::bind_method(D_METHOD("get_node_or_null", "path"), &Node::get_node_or_null);
 	ClassDB::bind_method(D_METHOD("get_parent"), &Node::get_parent);
+	ClassDB::bind_method(D_METHOD("find_child_of_type", "type"), &Node::find_child_of_type);
 	ClassDB::bind_method(D_METHOD("find_child", "pattern", "recursive", "owned"), &Node::find_child, DEFVAL(true), DEFVAL(true));
 	ClassDB::bind_method(D_METHOD("find_children", "pattern", "type", "recursive", "owned"), &Node::find_children, DEFVAL(""), DEFVAL(true), DEFVAL(true));
 	ClassDB::bind_method(D_METHOD("find_parent", "pattern"), &Node::find_parent);

@@ -152,6 +152,7 @@ class SceneTreeDock : public VBoxContainer {
 
 	ReparentDialog *reparent_dialog = nullptr;
 	EditorFileDialog *new_scene_from_dialog = nullptr;
+	EditorFileDialog *new_inherited_scene_branch_from_dialog = nullptr;
 
 	enum FilterMenuItems {
 		FILTER_BY_TYPE = 64, // Used in the same menus as the Tool enum.
@@ -242,6 +243,7 @@ class SceneTreeDock : public VBoxContainer {
 	void _scene_tree_gui_input(Ref<InputEvent> p_event);
 
 	void _new_scene_from(const String &p_file);
+	void _new_inherited_scene_from(const String &p_file);
 	void _set_node_owner_recursive(Node *p_node, Node *p_owner, const HashMap<const Node *, Node *> &p_inverse_duplimap);
 
 	bool _validate_no_foreign();
