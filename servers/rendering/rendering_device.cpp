@@ -6360,7 +6360,9 @@ void RenderingDevice::_begin_frame(bool p_presented) {
 	}
 
 	if (p_presented) {
-		update_perf_report();
+		if (GLOBAL_GET("optimizations/enable_perf_report")) {
+			update_perf_report();
+		}
 		driver->linear_uniform_set_pools_reset(frame);
 	}
 
@@ -8015,6 +8017,7 @@ RenderingDevice::RenderingDevice() {
 	}
 
 	render_thread_id = Thread::get_caller_id();
+	GLOBAL_DEF("optimizations/enable_perf_report", false);
 }
 
 /*****************/
