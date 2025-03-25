@@ -5343,7 +5343,6 @@ void DisplayServerX11::process_events() {
 					m.data.l[4] = xdnd_action_copy;
 
 					XSendEvent(x11_display, event.xclient.data.l[0], False, NoEventMask, (XEvent *)&m);
-					XFlush(x11_display);
 				} else if ((unsigned int)event.xclient.message_type == (unsigned int)xdnd_drop) {
 					if (requested != None) {
 						xdnd_source_window = event.xclient.data.l[0];
