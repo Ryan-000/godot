@@ -840,6 +840,8 @@ void CSharpLanguage::reload_assemblies(bool p_soft_reload) {
 	}
 
 	List<Ref<CSharpScript>> to_reload_state;
+	// We do file system updates in batches because it is more efficient.
+	Vector<String> pending_file_system_update_paths;
 
 	for (Ref<CSharpScript> &scr : to_reload) {
 #ifdef TOOLS_ENABLED
@@ -853,6 +855,8 @@ void CSharpLanguage::reload_assemblies(bool p_soft_reload) {
 				scr->pending_reload_instances.clear();
 				scr->pending_reload_state.clear();
 				continue;
+			} else {
+				pending_file_system_update_paths.push_back(scr->get_path());
 			}
 		} else {
 			bool success = GDMonoCache::managed_callbacks.ScriptManagerBridge_TryReloadRegisteredScriptWithClass(scr.ptr());
@@ -944,6 +948,15 @@ void CSharpLanguage::reload_assemblies(bool p_soft_reload) {
 
 		to_reload_state.push_back(scr);
 	}
+
+#ifdef TOOLS_ENABLED
+	// If the EditorFileSystem singleton is available, update the file;
+	// otherwise, the file will be updated when the singleton becomes available.
+	EditorFileSystem *efs = EditorFileSystem::get_singleton();
+	if (efs) {
+		efs->update_files(pending_file_system_update_paths);
+	}
+#endif
 
 	// Deserialize managed callables.
 	// This is done before reloading script's internal state, so potential callables invoked in properties work.
@@ -2599,15 +2612,6 @@ Error CSharpScript::reload(bool p_keep_state) {
 		update_script_class_info(this);
 
 		_update_exports();
-
-#ifdef TOOLS_ENABLED
-		// If the EditorFileSystem singleton is available, update the file;
-		// otherwise, the file will be updated when the singleton becomes available.
-		EditorFileSystem *efs = EditorFileSystem::get_singleton();
-		if (efs) {
-			efs->update_file(script_path);
-		}
-#endif
 	}
 
 	return OK;
