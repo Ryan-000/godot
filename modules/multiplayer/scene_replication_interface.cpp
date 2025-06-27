@@ -373,6 +373,8 @@ bool SceneReplicationInterface::is_rpc_visible(const ObjectID &p_oid, int p_peer
 
 		current = next;
 	}
+
+	return true; // Not tracked, so visible.
 }
 
 Error SceneReplicationInterface::_update_sync_visibility(int p_peer, MultiplayerSynchronizer *p_sync) {
