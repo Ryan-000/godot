@@ -322,12 +322,14 @@ private:
 			uint32_t instance_uniforms_ofs; //base offset in global buffer for instance variables
 			uint32_t gi_offset; //GI information when using lightmapping (VCT or lightmap index)
 			uint32_t layer_mask;
+			uint64_t material_rid;
+			uint64_t _unusedAlignment;
 			float lightmap_uv_scale[4];
 			float compressed_aabb_position[4];
 			float compressed_aabb_size[4];
 			float uv_scale[4];
 		};
-
+		static_assert(sizeof(InstanceData) % 16 == 0, "std430 SSBO stride must be 16-byte aligned");
 		UBO ubo;
 
 		LocalVector<RID> uniform_buffers;

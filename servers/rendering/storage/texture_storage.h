@@ -193,6 +193,11 @@ public:
 	// Motion vectors
 	virtual void render_target_set_velocity_target_size(RID p_render_target, const Size2i &p_target_size) = 0;
 	virtual Size2i render_target_get_velocity_target_size(RID p_render_target) const = 0;
+
+	virtual void texture_streaming_add_entry(RID p_texture, RS::StreamedTextureEntry *p_entry) = 0;
+	virtual void texture_streaming_begin_frame() = 0;
+	virtual void texture_streaming_set_priority(RID p_texture, uint32_t priority) = 0;
+	virtual void texture_streaming_process(double delta) = 0;
 };
 
 #endif // TEXTURE_STORAGE_H

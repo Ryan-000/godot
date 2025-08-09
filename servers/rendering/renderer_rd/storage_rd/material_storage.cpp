@@ -864,6 +864,7 @@ void MaterialStorage::MaterialData::update_textures(const HashMap<StringName, Va
 	bool uses_global_textures = false;
 	global_textures_pass++;
 
+	streamed_textures_cache.clear();
 	for (int i = 0, k = 0; i < p_texture_uniforms.size(); i++) {
 		const StringName &uniform_name = p_texture_uniforms[i].name;
 		int uniform_array_size = p_texture_uniforms[i].array_size;
@@ -916,6 +917,13 @@ void MaterialStorage::MaterialData::update_textures(const HashMap<StringName, Va
 					}
 				} else {
 					textures.push_back(V->value);
+				}
+			}
+
+			// cache them for streaming checks later
+			for (const RID &t : textures) {
+				if (const TextureStorage::Texture *texture = texture_storage->get_texture(t); texture && texture->is_streamed) {
+					streamed_textures_cache.push_back(t);
 				}
 			}
 
@@ -1297,6 +1305,153 @@ bool MaterialStorage::free(RID p_rid) {
 
 	return false;
 }
+
+struct MaterialFeedback {
+	uint32_t usage_count;
+};
+
+void MaterialStorage::reset_material_feedback_buffer() {
+	uint32_t total_material_count = material_owner.get_rid_count();
+	// just temp do 16k materials
+	total_material_count = 16 * 1024;
+
+	uint32_t buffer_size = sizeof(MaterialFeedback) * total_material_count;
+
+	// zeroed out buffer data.
+	Vector<uint8_t> buffer_data;
+	buffer_data.resize(buffer_size);
+	memset(buffer_data.ptrw(), 0, buffer_size);
+
+	if (buffer_size == material_feedback_buffer_size) {
+		RD::get_singleton()->buffer_update(material_feedback_buffer, 0, buffer_size, buffer_data.ptrw());
+	} else { // recreate if size changed.
+		if (material_feedback_buffer.is_valid()) {
+			RD::get_singleton()->free(material_feedback_buffer);
+		}
+
+		material_feedback_buffer = RD::get_singleton()->storage_buffer_create(buffer_size, buffer_data);
+		material_feedback_buffer_size = buffer_size;
+		// staging_feedback_buffer = RD::get_singleton()->storage_buffer_create(buffer_size, buffer_data);
+	}
+}
+
+void MaterialStorage::read_from_material_buffer() {
+	// This function reads the material feedback buffer and updates the usage count for each material.
+	ERR_FAIL_COND_MSG(!material_feedback_buffer.is_valid(), "Material feedback buffer is not initialized. Call reset_material_feedback_buffer() first.");
+	// ERR_FAIL_COND_MSG(!staging_feedback_buffer.is_valid(), "Staging feedback buffer is not initialized.");
+	uint32_t total_material_count = material_owner.get_rid_count();
+
+	// ERR_FAIL_COND_MSG(sizeof(MaterialFeedback) * total_material_count != material_feedback_buffer_size, "Material feedback buffer size mismatch.");
+
+
+	// RD::get_singleton()->buffer_copy(staging_feedback_buffer, material_feedback_buffer, 0, 0, material_feedback_buffer_size);
+
+
+	LocalVector<MaterialFeedback> feedbacks;
+	feedbacks.resize(total_material_count);
+	Vector<uint8_t> buffer_data = RD::get_singleton()->buffer_get_data(material_feedback_buffer, 0, material_feedback_buffer_size);
+
+	//RD::get_singleton()->buffer_get_data_async(material_feedback_buffer, callable_mp_static(&MaterialStorage::on_feedback_buffer_ready) 0, material_feedback_buffer_size);
+
+	// Write into the feedbacks vector.
+	for (uint32_t i = 0; i < total_material_count; i++) {
+		const MaterialFeedback *feedback = (const MaterialFeedback *)&buffer_data[i * sizeof(MaterialFeedback)];
+		feedbacks[i].usage_count = feedback->usage_count;
+	}
+
+	// Update the material owner with the feedbacks.
+	LocalVector<RID> material_rids;
+	material_rids.resize(total_material_count);
+	material_owner.fill_owned_buffer(material_rids.ptr());
+
+	// print total material count
+	// print_line("Total material count: " + itos(total_material_count));
+
+	// Now order the materials by usage count and store them in the important_materials vector.
+	LocalVector<RID> visible_materials;
+	for (uint32_t i = 0; i < total_material_count; i++) {
+		if (RID material_rid = material_rids[i]; material_rid.is_valid()) {
+			// assign the pixel usages.
+			if (Material *material = material_owner.get_or_null(material_rid)) {
+				const uint32_t usages = feedbacks[i].usage_count;
+				material->pixel_usages = usages;
+				if (usages > 0) {
+					visible_materials.push_back(material_rid);
+				}
+			}
+		}
+	}
+	// print_line("Number of visible materials: " + itos(visible_materials.size()));
+
+	struct MaterialUsageComparator {
+		bool operator()(const RID &a, const RID &b) const {
+			const Material *mat_a = MaterialStorage::get_singleton()->material_owner.get_or_null(a);
+			const Material *mat_b = MaterialStorage::get_singleton()->material_owner.get_or_null(b);
+			if (mat_a && mat_b) {
+				return mat_a->pixel_usages > mat_b->pixel_usages;
+			}
+			return false;
+		}
+	};
+
+	// Sort the important materials by usage count from most used to least used.
+	visible_materials.sort_custom<MaterialUsageComparator>();
+	// print top 5 materials
+	// for (int i = 0; i < 5 && i < visible_materials.size(); i++) {
+	// 	RID material_rid = visible_materials[i];
+	// 	Material *material = material_owner.get_or_null(material_rid);
+	// 	if (material && material->shader) {
+	// 		print_line("Material Shader Path: " + material->shader->path_hint + ", Usage Count: " + itos(material->pixel_usages));
+	// 	}
+	// }
+
+	// Iterate over the materials, and accumulate their textures and usages.
+	HashMap<RID, uint32_t> texture_usages;
+	for (const RID &material_rid : visible_materials) {
+		Material *material = material_owner.get_or_null(material_rid);
+		if (material && material->data) {
+			if (material->data->streamed_textures_cache.is_empty()) {
+				// If the material has no textures, we can skip it.
+				continue;
+			}
+
+			// Get the textures from the material.
+			for (const RID &texture_rid : material->data->streamed_textures_cache) {
+				if (texture_rid.is_valid()) {
+					texture_usages[texture_rid] += material->pixel_usages;
+				}
+			}
+		}
+	}
+
+
+
+	// Iterate over the texture usages and update the texture storage.
+	TextureStorage *texture_storage = TextureStorage::get_singleton();
+	// print_line("Number of textures to update: " + itos(texture_usages.size()));
+	for (const KeyValue<RID, uint32_t> &E : texture_usages) {
+		RID texture_rid = E.key;
+		uint32_t usage_count = E.value;
+		TextureStorage::get_singleton()->texture_streaming_set_priority(texture_rid, usage_count);
+	}
+}
+
+void MaterialStorage::on_feedback_buffer_ready(PackedByteArray &data) {
+	// same parsing logic as above, but now truly after the GPU is done with it
+}
+
+
+RID MaterialStorage::get_material_feedback_buffer()  {
+	ERR_FAIL_COND_V_MSG(!material_feedback_buffer.is_valid(), RID(), "Material feedback buffer is not initialized. Call reset_material_feedback_buffer() first.");
+
+	uint32_t total_material_count = material_owner.get_rid_count();
+	total_material_count = 16 * 1024; // tmep
+	uint32_t buffer_size = sizeof(MaterialFeedback) * total_material_count;
+	ERR_FAIL_COND_V_MSG(buffer_size != buffer_size, RID(), "Material feedback buffer size mismatch.");
+
+	return material_feedback_buffer;
+}
+
 
 /* GLOBAL SHADER UNIFORM API */
 

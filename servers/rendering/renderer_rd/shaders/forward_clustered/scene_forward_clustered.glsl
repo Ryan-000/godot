@@ -1119,6 +1119,7 @@ vec3 encode24(vec3 v) {
 
 void fragment_shader(in SceneData scene_data) {
 	uint instance_index = instance_index_interp;
+    MaterialFeedbackBuffer_record_material_usage(instances.data[instance_index].material_rid);
 
 #ifdef PREMUL_ALPHA_USED
 	float premul_alpha = 1.0;

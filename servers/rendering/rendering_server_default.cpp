@@ -68,6 +68,7 @@ void RenderingServerDefault::request_frame_drawn_callback(const Callable &p_call
 
 void RenderingServerDefault::_draw(bool p_swap_buffers, double frame_step) {
 	RSG::rasterizer->begin_frame(frame_step);
+	RSG::texture_storage->texture_streaming_begin_frame();
 
 	TIMESTAMP_BEGIN()
 
@@ -87,6 +88,7 @@ void RenderingServerDefault::_draw(bool p_swap_buffers, double frame_step) {
 	RSG::canvas_render->update();
 
 	RSG::rasterizer->end_frame(p_swap_buffers);
+	RSG::texture_storage->texture_streaming_process(frame_step);
 
 #ifndef _3D_DISABLED
 	XRServer *xr_server = XRServer::get_singleton();

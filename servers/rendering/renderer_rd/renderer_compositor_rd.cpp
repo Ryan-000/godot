@@ -117,6 +117,7 @@ void RendererCompositorRD::begin_frame(double frame_step) {
 
 void RendererCompositorRD::end_frame(bool p_present) {
 	RD::get_singleton()->swap_buffers(p_present);
+	RendererRD::MaterialStorage::get_singleton()->read_from_material_buffer();
 }
 
 void RendererCompositorRD::initialize() {

@@ -103,6 +103,7 @@ public:
 		bool update_parameters_uniform_set(const HashMap<StringName, Variant> &p_parameters, bool p_uniform_dirty, bool p_textures_dirty, const HashMap<StringName, ShaderLanguage::ShaderNode::Uniform> &p_uniforms, const uint32_t *p_uniform_offsets, const Vector<ShaderCompiler::GeneratedCode::Texture> &p_texture_uniforms, const HashMap<StringName, HashMap<int, RID>> &p_default_texture_params, uint32_t p_ubo_size, RID &r_uniform_set, RID p_shader, uint32_t p_shader_uniform_set, bool p_use_linear_color, bool p_3d_material);
 		void free_parameters_uniform_set(RID p_uniform_set);
 
+		RID get_rid() const { return self; }
 	private:
 		friend class MaterialStorage;
 
@@ -116,6 +117,7 @@ public:
 		Vector<uint8_t> ubo_data[2]; // 0: linear buffer; 1: sRGB buffer.
 		RID uniform_buffer[2]; // 0: linear buffer; 1: sRGB buffer.
 		Vector<RID> texture_cache;
+		LocalVector<RID> streamed_textures_cache; // RIDS are owned by TextureStorage
 	};
 
 	struct Samplers {
@@ -145,6 +147,9 @@ private:
 
 	RID quad_index_buffer;
 	RID quad_index_array;
+	uint32_t material_feedback_buffer_size;
+	RID material_feedback_buffer = RID();
+	// RID staging_feedback_buffer = RID();
 
 	/* GLOBAL SHADER UNIFORM API */
 
@@ -246,6 +251,7 @@ private:
 		int32_t priority = 0;
 		RID next_pass;
 		SelfList<Material> update_element;
+		uint32_t pixel_usages = 0;
 
 		Dependency dependency;
 
@@ -269,6 +275,12 @@ public:
 	virtual ~MaterialStorage();
 
 	bool free(RID p_rid);
+
+	/* Feedback */
+	void reset_material_feedback_buffer();
+	RID get_material_feedback_buffer();
+	void read_from_material_buffer();
+	void on_feedback_buffer_ready(PackedByteArray &p_data);
 
 	/* Helpers */
 

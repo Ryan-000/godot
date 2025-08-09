@@ -161,6 +161,7 @@ private:
 
 		int height_2d;
 		int width_2d;
+		RenderingServer::StreamedTextureEntry *stream_entry = nullptr;
 
 		struct BufferSlice3D {
 			Size2i size;
@@ -192,6 +193,9 @@ private:
 		void *detect_roughness_callback_ud = nullptr;
 
 		CanvasTexture *canvas_texture = nullptr;
+
+		bool is_streamed = false;
+		uint32_t streaming_priority = 0;
 
 		void cleanup();
 	};
@@ -476,6 +480,11 @@ private:
 		RID shader_version;
 		RID pipelines[SHADER_MAX];
 	} rt_sdf;
+
+	// Streaming
+	RBMap<RID, uint32_t> _stream_priorities;
+	uint32_t texture_stream_used_memory = 0;
+	uint32_t texture_stream_max_memory_budget = 256 * 1024 * 1024; // 256MB
 
 public:
 	static TextureStorage *get_singleton();
@@ -801,6 +810,11 @@ public:
 
 	virtual void render_target_set_velocity_target_size(RID p_render_target, const Size2i &p_target_size) override {}
 	virtual Size2i render_target_get_velocity_target_size(RID p_render_target) const override { return Size2i(0, 0); }
+
+	virtual void texture_streaming_add_entry(RID p_texture, RS::StreamedTextureEntry *p_entry) override;
+	virtual void texture_streaming_begin_frame() override;
+	virtual void texture_streaming_set_priority(RID p_texture, uint32_t p_priority) override;
+	virtual void texture_streaming_process(double delta) override;
 
 	RID render_target_get_rd_framebuffer(RID p_render_target);
 	RID render_target_get_rd_texture(RID p_render_target);

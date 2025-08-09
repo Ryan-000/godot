@@ -36,6 +36,7 @@
 #include "renderer_canvas_cull.h"
 #include "renderer_scene_cull.h"
 #include "rendering_server_globals.h"
+#include "renderer_rd/storage_rd/material_storage.h"
 #include "storage/texture_storage.h"
 
 static Transform2D _canvas_get_transform(RendererViewport::Viewport *p_viewport, RendererCanvasCull::Canvas *p_canvas, RendererViewport::Viewport::CanvasData *p_canvas_data, const Vector2 &p_vp_size) {
@@ -719,6 +720,12 @@ void RendererViewport::_draw_viewport(Viewport *p_viewport) {
 }
 
 void RendererViewport::draw_viewports(bool p_swap_buffers) {
+	auto *rd_storage = dynamic_cast<RendererRD::MaterialStorage*>(RSG::material_storage);
+	if (rd_storage != nullptr) {
+		// rd_storage->read_from_material_buffer();
+		rd_storage->reset_material_feedback_buffer();
+	}
+
 	timestamp_vp_map.clear();
 
 #ifndef _3D_DISABLED

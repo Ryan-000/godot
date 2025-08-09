@@ -32,7 +32,7 @@
 
 #include "scene/resources/bit_map.h"
 
-Error CompressedTexture2D::_load_data(const String &p_path, int &r_width, int &r_height, Ref<Image> &image, bool &r_request_3d, bool &r_request_normal, bool &r_request_roughness, int &mipmap_limit, int p_size_limit) {
+Error CompressedTexture2D::_load_data(const String &p_path, bool p_is_first_load_or_reloading, bool p_streamed, int &r_width, int &r_height, Ref<Image> &image, bool &r_request_3d, bool &r_request_normal, bool &r_request_roughness, int &mipmap_limit, int p_size_limit) {
 	alpha_cache.unref();
 
 	ERR_FAIL_COND_V(image.is_null(), ERR_INVALID_PARAMETER);
@@ -79,13 +79,55 @@ Error CompressedTexture2D::_load_data(const String &p_path, int &r_width, int &r
 		p_size_limit = 0;
 	}
 
-	image = load_image_from_file(f, p_size_limit);
+
+
+	uint32_t original_pos = f->get_position();
+	f->get_32(); // dataformat
+	f->get_16(); // width
+	f->get_16(); // height
+	uint32_t mipmaps = f->get_32();
+	f->seek(original_pos); //rewind
+
+	int mipmap_to_load = 0;
+	if (p_is_first_load_or_reloading && p_streamed) {
+		// Load smallest mipmap first.
+		mipmap_to_load = mipmaps; // idk if this starts at 0 or 1
+	} else if (p_streamed) {
+		// not first time, select the mipmap
+		mipmap_to_load = streamed_texture_entry->current_loaded_mipmap;
+	}
+
+	// if streamed (and loading for first time), we need to specify the smallest mipmap to load
+	image = load_image_from_file(f,  p_size_limit, mipmap_to_load, streamed_texture_entry);
+
+	streamed_texture_entry->resource = static_cast<void *>(this);
+	// setup the callback too.
+	if (p_is_first_load_or_reloading && p_streamed && streamed_texture_entry->load_mipmap == nullptr) {
+		// if streamed, we need to set the callback to load the mipmaps.
+		streamed_texture_entry->load_mipmap = [](RenderingServer::StreamedTextureEntry *p_entry, int p_mipmap, void *p_userdata) {
+			CompressedTexture2D *ctex = static_cast<CompressedTexture2D *>(p_userdata);
+			// do this deferred.
+			callable_mp(ctex, &CompressedTexture2D::_reload_to_mipmap).bind(p_mipmap).call_deferred();
+		};
+	}
 
 	if (image.is_null() || image->is_empty()) {
 		return ERR_CANT_OPEN;
 	}
 
 	return OK;
+}
+
+void CompressedTexture2D::_reload_to_mipmap(int p_mipmap) {
+	if (streamed_texture_entry == nullptr) {
+		return; // nothing to do.
+	}
+
+	if (p_mipmap < 0 || p_mipmap >= streamed_texture_entry->mipmap_count) {
+		ERR_FAIL_MSG("Invalid mipmap index to reload.");
+	}
+	streamed_texture_entry->current_loaded_mipmap = p_mipmap;
+	load(get_load_path()); // reload the texture, it will pick the right mipmap this time.
 }
 
 void CompressedTexture2D::set_path(const String &p_path, bool p_take_over) {
@@ -126,6 +168,14 @@ Image::Format CompressedTexture2D::get_format() const {
 }
 
 Error CompressedTexture2D::load(const String &p_path) {
+	bool streamed = false; // disabled for now, because this kind of sucks atm
+
+	bool first_load = false;
+	if (streamed_texture_entry == nullptr) {
+		streamed_texture_entry = memnew(RenderingServer::StreamedTextureEntry);
+		first_load = true; // first time.
+	}
+
 	int lw, lh;
 	Ref<Image> image;
 	image.instantiate();
@@ -135,7 +185,7 @@ Error CompressedTexture2D::load(const String &p_path) {
 	bool request_roughness;
 	int mipmap_limit;
 
-	Error err = _load_data(p_path, lw, lh, image, request_3d, request_normal, request_roughness, mipmap_limit);
+	Error err = _load_data(p_path, first_load, streamed, lw, lh, image, request_3d, request_normal, request_roughness, mipmap_limit);
 	if (err) {
 		return err;
 	}
@@ -143,8 +193,14 @@ Error CompressedTexture2D::load(const String &p_path) {
 	if (texture.is_valid()) {
 		RID new_texture = RS::get_singleton()->texture_2d_create(image);
 		RS::get_singleton()->texture_replace(texture, new_texture);
+		if (streamed) {
+			RS::get_singleton()->texture_streaming_add_entry(texture, streamed_texture_entry);
+		}
 	} else {
 		texture = RS::get_singleton()->texture_2d_create(image);
+		if (streamed) {
+			RS::get_singleton()->texture_streaming_add_entry(texture, streamed_texture_entry);
+		}
 	}
 	if (lw || lh) {
 		RS::get_singleton()->texture_set_size_override(texture, lw, lh);
@@ -296,7 +352,7 @@ void CompressedTexture2D::reload_from_file() {
 void CompressedTexture2D::_validate_property(PropertyInfo &p_property) const {
 }
 
-Ref<Image> CompressedTexture2D::load_image_from_file(Ref<FileAccess> f, int p_size_limit) {
+Ref<Image> CompressedTexture2D::load_image_from_file(Ref<FileAccess> f, int p_size_limit, int p_target_mip, RS::StreamedTextureEntry *r_streamed_entry) {
 	uint32_t data_format = f->get_32();
 	uint32_t w = f->get_16();
 	uint32_t h = f->get_16();
@@ -370,7 +426,6 @@ Ref<Image> CompressedTexture2D::load_image_from_file(Ref<FileAccess> f, int p_si
 			//only one image (which will most likely be the case anyway for this format)
 			image = mipmap_images[0];
 			return image;
-
 		} else {
 			//rarer use case, but needs to be supported
 			Vector<uint8_t> img_data;
@@ -420,13 +475,35 @@ Ref<Image> CompressedTexture2D::load_image_from_file(Ref<FileAccess> f, int p_si
 		sh = MAX(sh >> 1, 1);
 		return img;
 	} else if (data_format == DATA_FORMAT_IMAGE) {
+		Vector<uint32_t> mip_sizes;
+		mip_sizes.resize(mipmaps + 1);
 		int size = Image::get_image_data_size(w, h, format, mipmaps ? true : false);
+
+		// Populate mip_sizes
+		for (uint32_t i = 0; i < mipmaps + 1; i++) {
+			int tw, th;
+			int ofs = Image::get_image_mipmap_offset_and_dimensions(w, h, format, i, tw, th);
+			mip_sizes.write[i] = ofs + Image::get_image_data_size(tw, th, format, mipmaps ? true : false);
+		}
+
+		// RS::StreamedTextureEntry entry;
+		r_streamed_entry->mipmap_byte_sizes = mip_sizes;
+		r_streamed_entry->mipmap_count = mipmaps + 1;
+		if (r_streamed_entry != nullptr && r_streamed_entry->load_mipmap == nullptr) {
+			r_streamed_entry->current_loaded_mipmap = mipmaps;// load smallest initially.
+		}
+		// entry.load_mipmap = [](RenderingServer::StreamedTextureEntry * streamed_texture_entry, int i, void * p) {
+		// 	// Load now.
+		//
+		// };
+
 
 		for (uint32_t i = 0; i < mipmaps + 1; i++) {
 			int tw, th;
 			int ofs = Image::get_image_mipmap_offset_and_dimensions(w, h, format, i, tw, th);
 
-			if (p_size_limit > 0 && i < mipmaps && (p_size_limit > tw || p_size_limit > th)) {
+			bool should_skip_due_to_streaming = (r_streamed_entry != nullptr) && (i != p_target_mip);
+			if ((p_size_limit > 0 && i < mipmaps && (p_size_limit > tw || p_size_limit > th)) || should_skip_due_to_streaming) {
 				if (ofs) {
 					f->seek(f->get_position() + ofs);
 				}
@@ -441,7 +518,8 @@ Ref<Image> CompressedTexture2D::load_image_from_file(Ref<FileAccess> f, int p_si
 				f->get_buffer(wr, data.size());
 			}
 
-			Ref<Image> image = Image::create_from_data(tw, th, mipmaps - i ? true : false, format, data);
+			bool use_mipmaps = mipmaps - i != 0;
+			Ref<Image> image = Image::create_from_data(tw, th, use_mipmaps, format, data);
 
 			return image;
 		}
@@ -463,6 +541,10 @@ CompressedTexture2D::~CompressedTexture2D() {
 	if (texture.is_valid()) {
 		ERR_FAIL_NULL(RenderingServer::get_singleton());
 		RS::get_singleton()->free(texture);
+	}
+	if (streamed_texture_entry) {
+		memdelete(streamed_texture_entry);
+		streamed_texture_entry = nullptr;
 	}
 }
 

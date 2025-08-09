@@ -795,6 +795,9 @@ void RenderForwardClustered::_fill_instance_data(RenderListType p_render_list, i
 
 		SceneState::InstanceData &instance_data = scene_state.instance_data[p_render_list][i + p_offset];
 
+		// Write material rid, so shader can feed it back.
+		instance_data.material_rid = surface->material->get_rid().get_id();
+
 		if (inst->prev_transform_dirty && frame > inst->prev_transform_change_frame + 1 && inst->prev_transform_change_frame) {
 			inst->prev_transform = inst->transform;
 			inst->prev_transform_dirty = false;
@@ -3558,6 +3561,15 @@ RID RenderForwardClustered::_setup_render_pass_uniform_set(RenderListType p_rend
 		RID ssil = rb.is_valid() && rb->has_texture(RB_SCOPE_SSIL, RB_FINAL) ? rb->get_texture(RB_SCOPE_SSIL, RB_FINAL) : RID();
 		RID texture = ssil.is_valid() ? ssil : texture_storage->texture_rd_get_default(is_multiview ? RendererRD::TextureStorage::DEFAULT_RD_TEXTURE_2D_ARRAY_BLACK : RendererRD::TextureStorage::DEFAULT_RD_TEXTURE_BLACK);
 		u.append_id(texture);
+		uniforms.push_back(u);
+	}
+
+	{
+		RD::Uniform u;
+		u.binding = 35;
+		u.uniform_type = RD::UNIFORM_TYPE_STORAGE_BUFFER;
+		RID material_buffer_rid = RendererRD::MaterialStorage::get_singleton()->get_material_feedback_buffer();
+		u.append_id(material_buffer_rid);
 		uniforms.push_back(u);
 	}
 

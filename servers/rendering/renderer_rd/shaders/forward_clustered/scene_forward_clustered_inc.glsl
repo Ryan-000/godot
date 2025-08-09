@@ -22,6 +22,9 @@
 #include "../decal_data_inc.glsl"
 #include "../scene_data_inc.glsl"
 
+#extension GL_ARB_gpu_shader_int64 : enable
+#extension GL_NV_shader_atomic_int64 : enable
+
 #if !defined(MODE_RENDER_DEPTH) || defined(MODE_RENDER_MATERIAL) || defined(MODE_RENDER_SDF) || defined(MODE_RENDER_NORMAL_ROUGHNESS) || defined(MODE_RENDER_VOXEL_GI) || defined(TANGENT_USED) || defined(NORMAL_MAP_USED) || defined(LIGHT_ANISOTROPY_USED)
 #ifndef NORMAL_USED
 #define NORMAL_USED
@@ -327,6 +330,8 @@ struct InstanceData {
 	uint instance_uniforms_ofs; //base offset in global buffer for instance variables
 	uint gi_offset; //GI information when using lightmapping (VCT or lightmap index)
 	uint layer_mask;
+	uint64_t material_rid;
+	uint64_t _unusedAlignment;
 	vec4 lightmap_uv_scale;
 	vec4 compressed_aabb_position_pad; // Only .xyz is used. .w is padding.
 	vec4 compressed_aabb_size_pad; // Only .xyz is used. .w is padding.
@@ -444,6 +449,18 @@ layout(set = 1, binding = 34) uniform texture2D ssil_buffer;
 #endif // USE_MULTIVIEW
 
 #endif
+
+layout( set = 1, binding = 35, std430) buffer MaterialFeedbackBuffer {
+	uint data[];
+}
+material_feedback_buffer;
+
+void MaterialFeedbackBuffer_record_material_usage(uint64_t material_rid) {
+	uint local_index = uint(material_rid & 0xFFFFFFFFu);
+
+	atomicAdd(material_feedback_buffer.data[local_index], 1u);
+}
+
 
 vec4 normal_roughness_compatibility(vec4 p_normal_roughness) {
 	float roughness = p_normal_roughness.w;

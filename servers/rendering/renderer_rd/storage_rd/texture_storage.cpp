@@ -3517,6 +3517,147 @@ RID TextureStorage::render_target_get_texture(RID p_render_target) {
 	return rt->texture;
 }
 
+
+void TextureStorage::texture_streaming_add_entry(RID p_texture, RS::StreamedTextureEntry *p_entry) {
+	Texture *tex = get_texture(p_texture);
+	ERR_FAIL_NULL(tex);
+	ERR_FAIL_COND(tex->type != TextureType::TYPE_2D);
+	ERR_FAIL_COND_MSG(p_entry->mipmap_count == 0, "Cannot stream texture with no mipmaps: " + tex->path);
+	ERR_FAIL_COND_MSG(p_entry->mipmap_byte_sizes.size() != p_entry->mipmap_count, "Mipmap byte sizes do not match mipmap count for texture: " + tex->path);
+
+	// Ok now, add the entry
+	tex->is_streamed = true;
+	tex->stream_entry = p_entry;
+}
+
+void TextureStorage::texture_streaming_begin_frame() {
+	_stream_priorities.clear();
+}
+
+void TextureStorage::texture_streaming_set_priority(const RID p_texture, const uint32_t p_priority) {
+	ERR_FAIL_COND_MSG(!owns_texture(p_texture), "Does not own texture.");
+	Texture *tex = get_texture(p_texture);
+	ERR_FAIL_NULL_MSG(tex, "Texture not found in storage.");
+
+	// print_line("Texture streaming: setting priority for texture " + tex->path + " to " + itos(priority));
+
+	// actually, needs to run everyframe, because _stream_priorities is cleared every frame, so we need to repopulate.
+	// if (tex->streaming_priority == priority) {
+	// 	return; //no change
+	// }
+	tex->streaming_priority = p_priority;
+
+	if (p_priority == 0) { //shouldnt even happen btw, todo: delete this?
+		_stream_priorities.erase(p_texture);
+	} else {
+		_stream_priorities[p_texture] = p_priority;
+	}
+};
+
+void TextureStorage::texture_streaming_process(double delta) {
+	// 1) Gather and sort by priority
+	LocalVector<RID> sorted_streaming_textures;
+	{
+		sorted_streaming_textures.reserve(_stream_priorities.size());
+
+		for (const KeyValue<RID, uint32_t> &E : _stream_priorities) {
+			const Texture *texture = get_texture(E.key);
+			ERR_CONTINUE(!texture);
+			ERR_CONTINUE(!texture->is_streamed);
+			ERR_CONTINUE(!texture->stream_entry);
+			sorted_streaming_textures.push_back(E.key);
+		}
+
+		struct TexturePriorityCompare {
+			bool operator()(const RID &a, const RID &b) const {
+				const Texture *tex_a = RendererRD::TextureStorage::get_singleton()->get_texture(a);
+				const Texture *tex_b = RendererRD::TextureStorage::get_singleton()->get_texture(b);
+
+				return tex_a->streaming_priority > tex_b->streaming_priority;
+			}
+		};
+		sorted_streaming_textures.sort_custom<TexturePriorityCompare>();
+	}
+
+
+	// 2) Simulate budget allocation
+	uint64_t remaining_budget = texture_stream_max_memory_budget;
+	HashMap<RID,int> target_lod;
+	target_lod.reserve(sorted_streaming_textures.size());
+	// print_line("Streaming texture count: " + itos(sorted_streaming_textures.size()));
+	for (RID rid : sorted_streaming_textures) {
+		const Texture *texture = get_texture(rid);
+		RenderingServer::StreamedTextureEntry *entry = texture->stream_entry;
+
+		int max_lod = entry->mipmap_count - 1;
+
+		// not visible: force lowest‐res
+		if (texture->streaming_priority == 0 && texture->stream_entry->current_loaded_mipmap != max_lod) {
+			target_lod.insert(rid, max_lod);
+			continue;
+		}
+
+		// Try highest‐res first (lod=0) then lowest‐res last
+		int chosen = entry->mipmap_count;
+		for (int lod = 0; lod < entry->mipmap_count; ++lod) {
+			uint32_t size_bytes = entry->mipmap_byte_sizes[lod];
+			if (size_bytes <= remaining_budget) {
+				chosen = lod;
+				remaining_budget -= size_bytes;
+				break;
+			}
+		}
+		chosen = CLAMP(chosen, 0, max_lod);
+		// only insert if it hasnt changed
+		if (texture->stream_entry->current_loaded_mipmap != chosen) {
+			target_lod.insert(rid, chosen);
+		}
+	}
+
+	// 3) Now actually load/unload to match targets
+	texture_stream_used_memory = 0;
+	uint32_t loaded_mips = 0;
+	uint32_t unloaded_mips = 0;
+
+	for (RID rid : sorted_streaming_textures) {
+		const Texture *texture = get_texture(rid);
+		RenderingServer::StreamedTextureEntry *entry = texture->stream_entry;
+		int current = entry->current_loaded_mipmap;
+		int desired = target_lod[rid];
+		int max_lod = entry->mipmap_count - 1;
+
+		desired = CLAMP(desired, 0, max_lod);
+		// print
+		// print_line(
+		// 	"Texture streaming: " + texture->path +
+		// 	" current mipmap: " + itos(current) +
+		// 	", desired mipmap: " + itos(desired) +
+		// 	", max mipmap: " + itos(max_lod)
+		// );
+		if (desired != current) {
+			// load_mipmap handles both up/down switches
+			entry->load_mipmap(entry, desired, entry->resource);
+			if (desired < current) {
+				++loaded_mips;
+			} else {
+				++unloaded_mips;
+			}
+			entry->current_loaded_mipmap = desired;
+		}
+
+		texture_stream_used_memory += entry->mipmap_byte_sizes[desired];
+	}
+
+	if (loaded_mips || unloaded_mips) {
+		print_line(
+			"Texture streaming: " +
+			itos(loaded_mips) + " mips loaded, " +
+			itos(unloaded_mips) + " evicted, " +
+			itos(texture_stream_used_memory / (1024 * 1024)) + " MB used"
+		);
+	}
+}
+
 void TextureStorage::render_target_set_override(RID p_render_target, RID p_color_texture, RID p_depth_texture, RID p_velocity_texture, RID p_velocity_depth_texture) {
 	RenderTarget *rt = render_target_owner.get_or_null(p_render_target);
 	ERR_FAIL_NULL(rt);

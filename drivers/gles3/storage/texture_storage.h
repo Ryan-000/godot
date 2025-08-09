@@ -701,6 +701,12 @@ public:
 	virtual void render_target_set_velocity_target_size(RID p_render_target, const Size2i &p_target_size) override {}
 	virtual Size2i render_target_get_velocity_target_size(RID p_render_target) const override { return Size2i(); }
 
+	// Not supported.
+	virtual void texture_streaming_add_entry(RID p_texture, RS::StreamedTextureEntry *p_entry) override {};
+	virtual void texture_streaming_begin_frame() override {};
+	virtual void texture_streaming_set_priority(RID p_texture, uint32_t priority) override {};
+	virtual void texture_streaming_process(double delta) override {};
+
 	void bind_framebuffer(GLuint framebuffer) {
 		glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
 	}

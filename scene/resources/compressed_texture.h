@@ -61,6 +61,7 @@ public:
 	};
 
 private:
+	RenderingServer::StreamedTextureEntry *streamed_texture_entry = nullptr;
 	String path_to_file;
 	mutable RID texture;
 	Image::Format format = Image::FORMAT_L8;
@@ -68,7 +69,8 @@ private:
 	int h = 0;
 	mutable Ref<BitMap> alpha_cache;
 
-	Error _load_data(const String &p_path, int &r_width, int &r_height, Ref<Image> &image, bool &r_request_3d, bool &r_request_normal, bool &r_request_roughness, int &mipmap_limit, int p_size_limit = 0);
+	void _reload_to_mipmap(int p_mipmap);
+	Error _load_data(const String &p_path, bool p_is_first_load_or_reloading, bool p_streamed, int &r_width, int &r_height, Ref<Image> &image, bool &r_request_3d, bool &r_request_normal, bool &r_request_roughness, int &mipmap_limit, int p_size_limit = 0);
 	virtual void reload_from_file() override;
 
 	static void _requested_3d(void *p_ud);
@@ -80,7 +82,7 @@ protected:
 	void _validate_property(PropertyInfo &p_property) const;
 
 public:
-	static Ref<Image> load_image_from_file(Ref<FileAccess> p_file, int p_size_limit);
+	static Ref<Image> load_image_from_file(Ref<FileAccess> p_file, int p_size_limit, int p_target_mip = UINT32_MAX, RS::StreamedTextureEntry *r_streamed_entry = nullptr);
 
 	typedef void (*TextureFormatRequestCallback)(const Ref<CompressedTexture2D> &);
 	typedef void (*TextureFormatRoughnessRequestCallback)(const Ref<CompressedTexture2D> &, const String &p_normal_path, RS::TextureDetectRoughnessChannel p_roughness_channel);

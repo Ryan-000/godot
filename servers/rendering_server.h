@@ -196,6 +196,20 @@ public:
 	virtual RID texture_get_rd_texture(RID p_texture, bool p_srgb = false) const = 0;
 	virtual uint64_t texture_get_native_handle(RID p_texture, bool p_srgb = false) const = 0;
 
+	// Streaming.
+	struct StreamedTextureEntry {
+		void* resource; // resource that owns this entry, can be a CompressedTexture2D
+		int current_loaded_mipmap; // current mipmap loaded.
+		int mipmap_count; // including the base mipmap
+		LocalVector<uint32_t> mipmap_byte_sizes;
+
+		// function pointer to load the mipmap data.
+		void (*load_mipmap)(StreamedTextureEntry *p_entry, int p_mipmap, void *p_userdata) = nullptr;
+	};
+
+	virtual void texture_streaming_add_entry(RID p_texture, StreamedTextureEntry *p_entry) = 0;
+
+
 	/* PIPELINES API */
 
 	enum PipelineSource {
