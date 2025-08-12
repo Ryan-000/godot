@@ -207,6 +207,7 @@ public:
 		void (*load_mipmap)(StreamedTextureEntry *p_entry, int p_mipmap, void *p_userdata) = nullptr;
 	};
 
+	bool texture_streaming_is_enabled() const { return false; }
 	virtual void texture_streaming_add_entry(RID p_texture, StreamedTextureEntry *p_entry) = 0;
 
 
