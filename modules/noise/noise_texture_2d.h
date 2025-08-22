@@ -60,6 +60,13 @@ private:
 	float bump_strength = 8.0;
 	bool normalize = true;
 
+	bool use_disk_cache = true;
+	String cache_dir = "user://noise_texture2d_cache";
+
+	String _compute_cache_key() const;
+	String _cache_path_for_key(const String &p_key) const;
+	Ref<Image> _try_load_cached(const String &p_key) const;
+
 	Ref<Gradient> color_ramp;
 	Ref<Noise> noise;
 
@@ -78,6 +85,8 @@ protected:
 	void _validate_property(PropertyInfo &p_property) const;
 
 public:
+	void save_cache_to_disk();
+
 	void set_noise(Ref<Noise> p_noise);
 	Ref<Noise> get_noise();
 
