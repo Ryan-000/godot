@@ -46,7 +46,7 @@
 
 #include <stdint.h>
 
-int Node::orphan_node_count = 0;
+std::atomic<int> Node::orphan_node_count{ 0 };
 
 thread_local Node *Node::current_process_thread_group = nullptr;
 
@@ -135,7 +135,7 @@ void Node::_notification(int p_notification) {
 			}
 
 			get_tree()->nodes_in_tree_count++;
-			orphan_node_count--;
+			orphan_node_count.fetch_sub(1, std::memory_order_relaxed);
 
 			// Allow physics interpolated nodes to automatically reset when added to the tree
 			// (this is to save the user from doing this manually each time).
@@ -155,7 +155,7 @@ void Node::_notification(int p_notification) {
 			ERR_FAIL_NULL(get_tree());
 
 			get_tree()->nodes_in_tree_count--;
-			orphan_node_count++;
+			orphan_node_count.fetch_add(1, std::memory_order_relaxed);
 
 			if (data.input) {
 				remove_from_group("_vp_input" + itos(get_viewport()->get_instance_id()));
@@ -4014,7 +4014,7 @@ String Node::_get_name_num_separator() {
 }
 
 Node::Node() {
-	orphan_node_count++;
+	orphan_node_count.fetch_add(1, std::memory_order_relaxed);
 
 	// Default member initializer for bitfield is a C++20 extension, so:
 
@@ -4058,7 +4058,7 @@ Node::~Node() {
 	ERR_FAIL_COND(data.parent);
 	ERR_FAIL_COND(data.children_cache.size());
 
-	orphan_node_count--;
+	orphan_node_count.fetch_sub(1, std::memory_order_relaxed);
 }
 
 ////////////////////////////////
