@@ -338,6 +338,21 @@ public:
 		return nullptr;
 	}
 
+	TValue &get_value_ref_or_add_default(const TKey &p_key, bool &r_was_added) {
+		uint32_t pos = 0;
+		uint32_t hash_pos = 0;
+		const uint32_t hashed_key = _hash(p_key);
+
+		if (_lookup_pos_with_hash(p_key, pos, hash_pos, hashed_key)) {
+			r_was_added = false;
+			return elements[pos].value;
+		}
+
+		r_was_added = true;
+		pos = _insert_element(p_key, TValue(), hashed_key);
+		return elements[pos].value;
+	}
+
 	bool has(const TKey &p_key) const {
 		uint32_t _pos = 0;
 		uint32_t h_pos = 0;
@@ -590,17 +605,8 @@ public:
 	}
 
 	TValue &operator[](const TKey &p_key) {
-		uint32_t pos = 0;
-		uint32_t h_pos = 0;
-		uint32_t hash = _hash(p_key);
-		bool exists = _lookup_pos_with_hash(p_key, pos, h_pos, hash);
-
-		if (exists) {
-			return elements[pos].value;
-		} else {
-			pos = _insert_element(p_key, TValue(), hash);
-			return elements[pos].value;
-		}
+		bool dummy;
+		return get_value_ref_or_add_default(p_key, dummy);
 	}
 
 	/* Insert */
