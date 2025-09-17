@@ -34,6 +34,8 @@
 #include "animation_blend_tree.h"
 #include "scene/animation/animation_player.h"
 
+thread_local AnimationNode::ProcessState *AnimationNode::tls_process_state = nullptr;
+
 void AnimationNode::get_parameter_list(LocalVector<PropertyInfo> *r_list) const {
 	Array parameters;
 
@@ -72,14 +74,15 @@ bool AnimationNode::is_parameter_read_only(const StringName &p_parameter) const 
 	return false;
 }
 
-void AnimationNode::set_parameter(const StringName &p_name, const Variant &p_value) {
-	ERR_FAIL_NULL(process_state);
-	if (process_state->is_testing) {
+void AnimationNode::set_parameter(ProcessState &p_process_state, const StringName &p_name, const Variant &p_value) {
+	if (p_process_state.is_testing) {
 		return;
 	}
 
+	AnimationTree::AnimationNodeInstance &instance = p_process_state.tree->get_node_instance(get_instance_id());
+
 	// Special handling for performance.
-	AnimationTree::AnimationNodeBaseParameters &base_parameters = process_state->tree->base_parameters_map[get_instance_id()];
+	AnimationTree::AnimationNodeBaseParameters &base_parameters = instance.base_parameters;
 	if (p_name == current_length) {
 		base_parameters.current_length = p_value;
 	}
@@ -90,9 +93,9 @@ void AnimationNode::set_parameter(const StringName &p_name, const Variant &p_val
 		base_parameters.current_delta = p_value;
 	}
 
-	AHashMap<StringName, Pair<Variant, bool>> &property_map = process_state->tree->property_map;
+	AHashMap<StringName, Pair<Variant, bool>> &property_map = p_process_state.tree->property_map;
 
-	const AHashMap<StringName, int>::Iterator it = property_cache.find(p_name);
+	const AHashMap<StringName, int>::Iterator it = instance.property_cache.find(p_name);
 	if (it) {
 		Pair<Variant, bool> &prop = property_map.get_by_index(it->value).value;
 		Variant value = p_value;
@@ -102,25 +105,31 @@ void AnimationNode::set_parameter(const StringName &p_name, const Variant &p_val
 		return;
 	}
 
-	AHashMap<StringName, AHashMap<StringName, StringName>> &property_parent_map = process_state->tree->property_parent_map;
+	AHashMap<StringName, AHashMap<StringName, StringName>> &property_parent_map = p_process_state.tree->property_parent_map;
 
-	const AHashMap<StringName, StringName> *map = property_parent_map.getptr(node_state.base_path);
+	const AHashMap<StringName, StringName> *map = property_parent_map.getptr(instance.base_path);
 	ERR_FAIL_NULL(map);
 
 	const StringName *path = map->getptr(p_name);
 	ERR_FAIL_NULL(path);
 
 	const int idx = property_map.get_index(*path);
-	property_cache.insert_new(p_name, idx);
+	instance.property_cache.insert_new(p_name, idx);
 	property_map.get_by_index(idx).value.first = p_value;
 }
 
-Variant &AnimationNode::get_parameter(const StringName &p_name) const {
+void AnimationNode::set_parameter_ex(const StringName &p_name, const Variant &p_value) {
+	ERR_FAIL_NULL(tls_process_state);
+	set_parameter(*tls_process_state, p_name, p_value);
+}
+
+Variant &AnimationNode::get_parameter(ProcessState &p_process_state, const StringName &p_name) const {
 	static Variant dummy = Variant();
-	ERR_FAIL_NULL_V(process_state, dummy);
+
+	AnimationTree::AnimationNodeInstance &instance = p_process_state.tree->get_node_instance(get_instance_id());
 
 	// Special handling for performance.
-	AnimationTree::AnimationNodeBaseParameters &base_parameters = process_state->tree->base_parameters_map[get_instance_id()];
+	AnimationTree::AnimationNodeBaseParameters &base_parameters = instance.base_parameters;
 	if (p_name == current_length) {
 		return base_parameters.current_length;
 	}
@@ -133,17 +142,17 @@ Variant &AnimationNode::get_parameter(const StringName &p_name) const {
 
 	//const AHashMap<StringName, int>::ConstIterator it = property_cache.find(p_name);
 	bool was_added = false;
-	int &index = property_cache.get_value_ref_or_add_default(p_name, was_added);
+	int &index = instance.property_cache.get_value_ref_or_add_default(p_name, was_added);
 
-	AHashMap<StringName, Pair<Variant, bool>> &property_map = process_state->tree->property_map;
+	AHashMap<StringName, Pair<Variant, bool>> &property_map = p_process_state.tree->property_map;
 
 	if (!was_added) {
 		return property_map.get_by_index(index).value.first;
 	}
 
-	AHashMap<StringName, AHashMap<StringName, StringName>> &property_parent_map = process_state->tree->property_parent_map;
+	AHashMap<StringName, AHashMap<StringName, StringName>> &property_parent_map = p_process_state.tree->property_parent_map;
 
-	const AHashMap<StringName, StringName> *map = property_parent_map.getptr(node_state.base_path);
+	const AHashMap<StringName, StringName> *map = property_parent_map.getptr(instance.base_path);
 	ERR_FAIL_NULL_V(map, dummy);
 
 	const StringName *path = map->getptr(p_name);
@@ -153,28 +162,26 @@ Variant &AnimationNode::get_parameter(const StringName &p_name) const {
 	return property_map.get_by_index(index).value.first;
 }
 
-Variant AnimationNode::get_parameter_script(const StringName &p_name) const {
-	return get_parameter(p_name);
+Variant AnimationNode::get_parameter_ex(const StringName &p_name) const {
+	ERR_FAIL_NULL_V(tls_process_state, Variant());
+	return get_parameter(*tls_process_state, p_name);
 }
 
-void AnimationNode::set_node_time_info(const NodeTimeInfo &p_node_time_info) {
-	if (process_state->is_testing) {
+void AnimationNode::set_node_time_info(ProcessState &p_process_state, const NodeTimeInfo &p_node_time_info) {
+	if (p_process_state.is_testing) {
 		return;
 	}
 
-	ERR_FAIL_NULL(process_state);
-
-	AnimationTree::AnimationNodeBaseParameters &base_parameters = process_state->tree->base_parameters_map[get_instance_id()];
+	AnimationTree::AnimationNodeBaseParameters &base_parameters = p_process_state.tree->get_node_instance(get_instance_id()).base_parameters;
 	base_parameters.current_length = p_node_time_info.length;
 	base_parameters.current_position = p_node_time_info.position;
 	base_parameters.current_delta = p_node_time_info.delta;
 }
 
-AnimationNode::NodeTimeInfo AnimationNode::get_node_time_info() const {
+AnimationNode::NodeTimeInfo AnimationNode::get_node_time_info(ProcessState &p_process_state) const {
 	NodeTimeInfo nti;
-	ERR_FAIL_NULL_V(process_state, NodeTimeInfo());
 
-	AnimationTree::AnimationNodeBaseParameters &base_parameters = process_state->tree->base_parameters_map[get_instance_id()];
+	AnimationTree::AnimationNodeBaseParameters &base_parameters = p_process_state.tree->get_node_instance(get_instance_id()).base_parameters;
 	nti.length = base_parameters.current_length.operator double();
 	nti.position = base_parameters.current_position.operator double();
 	nti.delta = base_parameters.current_delta.operator double();
@@ -193,80 +200,77 @@ void AnimationNode::get_child_nodes(LocalVector<ChildNode> *r_child_nodes) {
 	}
 }
 
-void AnimationNode::blend_animation(const StringName &p_animation, AnimationMixer::PlaybackInfo &p_playback_info) {
-	ERR_FAIL_NULL(process_state);
-	p_playback_info.track_weights = &node_state.track_weights;
-	process_state->tree->make_animation_instance(p_animation, p_playback_info);
+void AnimationNode::blend_animation(ProcessState &p_process_state, const StringName &p_animation, AnimationMixer::PlaybackInfo &p_playback_info) {
+	p_playback_info.track_weights = &p_process_state.tree->get_node_instance(get_instance_id()).track_weights;
+	p_process_state.tree->make_animation_instance(p_animation, p_playback_info);
 }
 
-AnimationNode::NodeTimeInfo AnimationNode::_pre_process(ProcessState *p_process_state, const AnimationMixer::PlaybackInfo &p_playback_info, bool p_test_only) {
-	process_state = p_process_state;
-	NodeTimeInfo nti = process(p_playback_info, p_test_only);
-	process_state = nullptr;
+AnimationNode::NodeTimeInfo AnimationNode::_pre_process(ProcessState &p_process_state, const AnimationMixer::PlaybackInfo &p_playback_info, bool p_test_only) {
+	tls_process_state = &p_process_state;
+	NodeTimeInfo nti = process(p_process_state, p_playback_info, p_test_only);
+	tls_process_state = nullptr;
 	return nti;
 }
 
-void AnimationNode::make_invalid(const String &p_reason) {
-	ERR_FAIL_NULL(process_state);
-	process_state->valid = false;
-	if (!process_state->invalid_reasons.is_empty()) {
-		process_state->invalid_reasons += "\n";
+void AnimationNode::make_invalid(ProcessState &p_process_state, const String &p_reason) {
+	p_process_state.valid = false;
+	if (!p_process_state.invalid_reasons.is_empty()) {
+		p_process_state.invalid_reasons += "\n";
 	}
-	process_state->invalid_reasons += String::utf8("•  ") + p_reason;
+	p_process_state.invalid_reasons += String::utf8("•  ") + p_reason;
 }
 
-AnimationTree *AnimationNode::get_animation_tree() const {
-	ERR_FAIL_NULL_V(process_state, nullptr);
-	return process_state->tree;
-}
-
-AnimationNode::NodeTimeInfo AnimationNode::blend_input(int p_input, const AnimationMixer::PlaybackInfo &p_playback_info, FilterAction p_filter, bool p_sync, bool p_test_only) {
+AnimationNode::NodeTimeInfo AnimationNode::blend_input(ProcessState &p_process_state, int p_input, const AnimationMixer::PlaybackInfo &p_playback_info, FilterAction p_filter, bool p_sync, bool p_test_only) {
 	ERR_FAIL_INDEX_V(p_input, (int64_t)inputs.size(), NodeTimeInfo());
 
-	AnimationNodeBlendTree *blend_tree = Object::cast_to<AnimationNodeBlendTree>(node_state.parent);
+	AnimationTree::AnimationNodeInstance &instance = p_process_state.tree->get_node_instance(get_instance_id());
+
+	AnimationNodeBlendTree *blend_tree = Object::cast_to<AnimationNodeBlendTree>(instance.parent);
 	ERR_FAIL_NULL_V(blend_tree, NodeTimeInfo());
 
 	// Update connections.
 	const StringName &current_name = blend_tree->get_node_name(*this);
-	node_state.connections = blend_tree->get_node_connection_array(current_name);
+	instance.connections = blend_tree->get_node_connection_array(current_name);
 
 	// Get node which is connected input port.
-	const StringName &node_name = node_state.connections[p_input];
+	const StringName &node_name = instance.connections[p_input];
 	const Ref<AnimationNode> &node = blend_tree->get_node_or_null(node_name);
 
 	if (node.is_null()) {
-		make_invalid(vformat(RTR("Nothing connected to input '%s' of node '%s'."), get_input_name(p_input), current_name));
+		make_invalid(p_process_state, vformat(RTR("Nothing connected to input '%s' of node '%s'."), get_input_name(p_input), current_name));
 		return NodeTimeInfo();
 	}
 
 	real_t activity = 0.0;
-	LocalVector<AnimationTree::Activity> *activity_ptr = process_state->tree->input_activity_map.getptr(node_state.base_path);
-	NodeTimeInfo nti = _blend_node(node, node_name, nullptr, p_playback_info, p_filter, p_sync, p_test_only, &activity);
+	LocalVector<AnimationTree::Activity> *activity_ptr = p_process_state.tree->input_activity_map.getptr(instance.base_path);
+	NodeTimeInfo nti = _blend_node(p_process_state, node, node_name, nullptr, p_playback_info, p_filter, p_sync, p_test_only, &activity);
 
 	if (activity_ptr && p_input < (int64_t)activity_ptr->size()) {
-		(*activity_ptr)[p_input].last_pass = process_state->last_pass;
+		(*activity_ptr)[p_input].last_pass = p_process_state.last_pass;
 		(*activity_ptr)[p_input].activity = activity;
 	}
 	return nti;
 }
 
-AnimationNode::NodeTimeInfo AnimationNode::blend_node(const Ref<AnimationNode> &p_node, const StringName &p_subpath, const AnimationMixer::PlaybackInfo &p_playback_info, FilterAction p_filter, bool p_sync, bool p_test_only) {
+AnimationNode::NodeTimeInfo AnimationNode::blend_node(ProcessState &p_process_state, const Ref<AnimationNode> &p_node, const StringName &p_subpath, const AnimationMixer::PlaybackInfo &p_playback_info, FilterAction p_filter, bool p_sync, bool p_test_only) {
 	ERR_FAIL_COND_V(p_node.is_null(), NodeTimeInfo());
-	p_node->node_state.connections.clear();
-	return _blend_node(p_node, p_subpath, this, p_playback_info, p_filter, p_sync, p_test_only, nullptr);
+	AnimationTree::AnimationNodeInstance &instance = p_process_state.tree->get_node_instance(get_instance_id());
+	instance.connections.clear();
+	return _blend_node(p_process_state, p_node, p_subpath, this, p_playback_info, p_filter, p_sync, p_test_only, nullptr);
 }
 
-AnimationNode::NodeTimeInfo AnimationNode::_blend_node(const Ref<AnimationNode> &p_node, const StringName &p_subpath, AnimationNode *p_new_parent, AnimationMixer::PlaybackInfo p_playback_info, FilterAction p_filter, bool p_sync, bool p_test_only, real_t *r_activity) {
-	ERR_FAIL_NULL_V(process_state, NodeTimeInfo());
+AnimationNode::NodeTimeInfo AnimationNode::_blend_node(ProcessState &p_process_state, const Ref<AnimationNode> &p_node, const StringName &p_subpath, AnimationNode *p_new_parent, AnimationMixer::PlaybackInfo p_playback_info, FilterAction p_filter, bool p_sync, bool p_test_only, real_t *r_activity) {
+	AnimationTree::AnimationNodeInstance &this_instance = p_process_state.tree->get_node_instance(get_instance_id());
+	AnimationTree::AnimationNodeInstance &node_instance = p_process_state.tree->get_node_instance(p_node->get_instance_id());
 
-	int blend_count = node_state.track_weights.size();
+	int blend_count = this_instance.track_weights.size();
 
-	if ((int64_t)p_node->node_state.track_weights.size() != blend_count) {
-		p_node->node_state.track_weights.resize(blend_count);
+	if ((int64_t)node_instance.track_weights.size() != blend_count) {
+		node_instance.track_weights.resize(blend_count);
 	}
 
-	real_t *blendw = p_node->node_state.track_weights.ptr();
-	const real_t *blendr = node_state.track_weights.ptr();
+	real_t *blendw = node_instance.track_weights.ptr();
+	const real_t *blendr = this_instance.track_weights.ptr();
 
 	bool any_valid = false;
 
@@ -276,7 +280,7 @@ AnimationNode::NodeTimeInfo AnimationNode::_blend_node(const Ref<AnimationNode> 
 		}
 
 		for (const KeyValue<NodePath, bool> &E : filter) {
-			const AHashMap<NodePath, int> &map = *process_state->track_map;
+			const AHashMap<NodePath, int> &map = *p_process_state.track_map;
 			const int *p = map.getptr(E.key);
 			if (!p) {
 				continue;
@@ -356,17 +360,18 @@ AnimationNode::NodeTimeInfo AnimationNode::_blend_node(const Ref<AnimationNode> 
 
 	StringName *parent_base;
 	if (p_new_parent) {
-		parent_base = &node_state.base_path;
+		parent_base = &this_instance.base_path;
 		new_parent = p_new_parent;
 		//new_path = String(node_state.base_path) + String(p_subpath) + "/";
 	} else {
-		ERR_FAIL_NULL_V(node_state.parent, NodeTimeInfo());
-		parent_base = &node_state.parent->node_state.base_path;
-		new_parent = node_state.parent;
+		ERR_FAIL_NULL_V(this_instance.parent, NodeTimeInfo());
+		AnimationTree::AnimationNodeInstance &parent_instance = p_process_state.tree->get_node_instance(this_instance.parent->get_instance_id());
+		parent_base = &parent_instance.base_path;
+		new_parent = this_instance.parent;
 		//new_path = String(new_parent->node_state.base_path) + String(p_subpath) + "/";
 	}
 
-	if (AHashMap<StringName, StringName> *childmap = process_state->tree->child_base_cache.getptr(*parent_base)) {
+	if (AHashMap<StringName, StringName> *childmap = p_process_state.tree->child_base_cache.getptr(*parent_base)) {
 		if (StringName *found = childmap->getptr(p_subpath)) {
 			new_path = found;
 		} else {
@@ -378,13 +383,14 @@ AnimationNode::NodeTimeInfo AnimationNode::_blend_node(const Ref<AnimationNode> 
 
 	// This process, which depends on p_sync is needed to process sync correctly in the case of
 	// that a synced AnimationNodeSync exists under the un-synced AnimationNodeSync.
-	p_node->set_node_state_base_path(*new_path);
-	p_node->node_state.parent = new_parent;
+	node_instance.base_path = *new_path;
+	node_instance.parent = new_parent;
+
 	if (!p_playback_info.seeked && !p_sync && !any_valid) {
 		p_playback_info.delta = 0.0;
-		return p_node->_pre_process(process_state, p_playback_info, p_test_only);
+		return p_node->_pre_process(p_process_state, p_playback_info, p_test_only);
 	}
-	return p_node->_pre_process(process_state, p_playback_info, p_test_only);
+	return p_node->_pre_process(p_process_state, p_playback_info, p_test_only);
 }
 
 String AnimationNode::get_caption() const {
@@ -438,28 +444,28 @@ int AnimationNode::find_input(const String &p_name) const {
 	return idx;
 }
 
-AnimationNode::NodeTimeInfo AnimationNode::process(const AnimationMixer::PlaybackInfo &p_playback_info, bool p_test_only) {
-	process_state->is_testing = p_test_only;
+AnimationNode::NodeTimeInfo AnimationNode::process(ProcessState &p_process_state, const AnimationMixer::PlaybackInfo &p_playback_info, bool p_test_only) {
+	p_process_state.is_testing = p_test_only;
 
 	AnimationMixer::PlaybackInfo pi = p_playback_info;
 	if (p_playback_info.seeked) {
 		if (p_playback_info.is_external_seeking) {
-			pi.delta = get_node_time_info().position - p_playback_info.time;
+			pi.delta = get_node_time_info(p_process_state).position - p_playback_info.time;
 		}
 	} else {
-		pi.time = get_node_time_info().position + p_playback_info.delta;
+		pi.time = get_node_time_info(p_process_state).position + p_playback_info.delta;
 	}
 
-	NodeTimeInfo nti = _process(pi, p_test_only);
+	NodeTimeInfo nti = _process(p_process_state, pi, p_test_only);
 
 	if (!p_test_only) {
-		set_node_time_info(nti);
+		set_node_time_info(p_process_state, nti);
 	}
 
 	return nti;
 }
 
-AnimationNode::NodeTimeInfo AnimationNode::_process(const AnimationMixer::PlaybackInfo &p_playback_info, bool p_test_only) {
+AnimationNode::NodeTimeInfo AnimationNode::_process(ProcessState &p_process_state, const AnimationMixer::PlaybackInfo &p_playback_info, bool p_test_only) {
 	double r_ret = 0.0;
 	GDVIRTUAL_CALL(_process, p_playback_info.time, p_playback_info.seeked, p_playback_info.is_external_seeking, p_test_only, r_ret);
 	NodeTimeInfo nti;
@@ -493,13 +499,13 @@ bool AnimationNode::is_deletable() const {
 }
 
 ObjectID AnimationNode::get_processing_animation_tree_instance_id() const {
-	ERR_FAIL_NULL_V(process_state, ObjectID());
-	return process_state->tree->get_instance_id();
+	ERR_FAIL_NULL_V(tls_process_state, ObjectID());
+	return tls_process_state->tree->get_instance_id();
 }
 
 bool AnimationNode::is_process_testing() const {
-	ERR_FAIL_NULL_V(process_state, false);
-	return process_state->is_testing;
+	ERR_FAIL_NULL_V(tls_process_state, false);
+	return tls_process_state->is_testing;
 }
 
 bool AnimationNode::is_path_filtered(const NodePath &p_path) const {
@@ -555,6 +561,7 @@ Ref<AnimationNode> AnimationNode::find_node_by_path(const String &p_name) const 
 }
 
 void AnimationNode::blend_animation_ex(const StringName &p_animation, double p_time, double p_delta, bool p_seeked, bool p_is_external_seeking, real_t p_blend, Animation::LoopedFlag p_looped_flag) {
+	ERR_FAIL_NULL(tls_process_state);
 	AnimationMixer::PlaybackInfo info;
 	info.time = p_time;
 	info.delta = p_delta;
@@ -562,7 +569,7 @@ void AnimationNode::blend_animation_ex(const StringName &p_animation, double p_t
 	info.is_external_seeking = p_is_external_seeking;
 	info.weight = p_blend;
 	info.looped_flag = p_looped_flag;
-	blend_animation(p_animation, info);
+	blend_animation(*tls_process_state, p_animation, info);
 }
 
 double AnimationNode::blend_node_ex(const StringName &p_sub_path, const Ref<AnimationNode> &p_node, double p_time, bool p_seek, bool p_is_external_seeking, real_t p_blend, FilterAction p_filter, bool p_sync, bool p_test_only) {
@@ -571,7 +578,7 @@ double AnimationNode::blend_node_ex(const StringName &p_sub_path, const Ref<Anim
 	info.seeked = p_seek;
 	info.is_external_seeking = p_is_external_seeking;
 	info.weight = p_blend;
-	NodeTimeInfo nti = blend_node(p_node, p_sub_path, info, p_filter, p_sync, p_test_only);
+	NodeTimeInfo nti = blend_node(*tls_process_state, p_node, p_sub_path, info, p_filter, p_sync, p_test_only);
 	return nti.length - nti.position;
 }
 
@@ -581,7 +588,7 @@ double AnimationNode::blend_input_ex(int p_input, double p_time, bool p_seek, bo
 	info.seeked = p_seek;
 	info.is_external_seeking = p_is_external_seeking;
 	info.weight = p_blend;
-	NodeTimeInfo nti = blend_input(p_input, info, p_filter, p_sync, p_test_only);
+	NodeTimeInfo nti = blend_input(*tls_process_state, p_input, info, p_filter, p_sync, p_test_only);
 	return nti.length - nti.position;
 }
 
@@ -638,8 +645,8 @@ void AnimationNode::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("blend_node", "name", "node", "time", "seek", "is_external_seeking", "blend", "filter", "sync", "test_only"), &AnimationNode::blend_node_ex, DEFVAL(FILTER_IGNORE), DEFVAL(true), DEFVAL(false));
 	ClassDB::bind_method(D_METHOD("blend_input", "input_index", "time", "seek", "is_external_seeking", "blend", "filter", "sync", "test_only"), &AnimationNode::blend_input_ex, DEFVAL(FILTER_IGNORE), DEFVAL(true), DEFVAL(false));
 
-	ClassDB::bind_method(D_METHOD("set_parameter", "name", "value"), &AnimationNode::set_parameter);
-	ClassDB::bind_method(D_METHOD("get_parameter", "name"), &AnimationNode::get_parameter_script);
+	ClassDB::bind_method(D_METHOD("set_parameter", "name", "value"), &AnimationNode::set_parameter_ex);
+	ClassDB::bind_method(D_METHOD("get_parameter", "name"), &AnimationNode::get_parameter_ex);
 
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "filter_enabled", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NO_EDITOR), "set_filter_enabled", "is_filter_enabled");
 	ADD_PROPERTY(PropertyInfo(Variant::ARRAY, "filters", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NO_EDITOR | PROPERTY_USAGE_INTERNAL), "_set_filters", "_get_filters");
@@ -724,14 +731,16 @@ bool AnimationTree::_blend_pre_process(double p_delta, int p_track_count, const 
 		process_state.last_pass = process_pass;
 		process_state.track_map = &p_track_map;
 
+		AnimationNodeInstance &instance = get_node_instance(root_animation_node->get_instance_id());
+
 		// Init node state for root AnimationNode.
-		root_animation_node->node_state.track_weights.resize(p_track_count);
-		real_t *src_blendsw = root_animation_node->node_state.track_weights.ptr();
+		instance.track_weights.resize(p_track_count);
+		real_t *src_blendsw = instance.track_weights.ptr();
 		for (int i = 0; i < p_track_count; i++) {
 			src_blendsw[i] = 1.0; // By default all go to 1 for the root input.
 		}
-		root_animation_node->set_node_state_base_path(SNAME(Animation::PARAMETERS_BASE_PATH.ascii().get_data()));
-		root_animation_node->node_state.parent = nullptr;
+		instance.base_path = SNAME(Animation::PARAMETERS_BASE_PATH.ascii().get_data());
+		instance.parent = nullptr;
 	}
 
 	// Process.
@@ -742,12 +751,12 @@ bool AnimationTree::_blend_pre_process(double p_delta, int p_track_count, const 
 			// If started, seek.
 			pi.seeked = true;
 			pi.delta = p_delta;
-			root_animation_node->_pre_process(&process_state, pi, false);
+			root_animation_node->_pre_process(process_state, pi, false);
 			started = false;
 		} else {
 			pi.seeked = false;
 			pi.delta = p_delta;
-			root_animation_node->_pre_process(&process_state, pi, false);
+			root_animation_node->_pre_process(process_state, pi, false);
 		}
 	}
 
@@ -801,8 +810,9 @@ void AnimationTree::_tree_changed() {
 }
 
 void AnimationTree::_animation_node_renamed(const ObjectID &p_oid, const String &p_old_name, const String &p_new_name) {
-	ERR_FAIL_COND(!property_reference_map.has(p_oid));
-	String base_path = property_reference_map[p_oid];
+	const AnimationNodeInstance *instance = instance_map.getptr(p_oid);
+	ERR_FAIL_COND(!instance);
+	String base_path = instance->base_path;
 	String old_base = base_path + p_old_name;
 	String new_base = base_path + p_new_name;
 	for (const PropertyInfo &E : properties) {
@@ -819,8 +829,9 @@ void AnimationTree::_animation_node_renamed(const ObjectID &p_oid, const String 
 }
 
 void AnimationTree::_animation_node_removed(const ObjectID &p_oid, const StringName &p_node) {
-	ERR_FAIL_COND(!property_reference_map.has(p_oid));
-	String base_path = String(property_reference_map[p_oid]) + String(p_node);
+	const AnimationNodeInstance *instance = instance_map.getptr(p_oid);
+	ERR_FAIL_COND(!instance);
+	String base_path = String(instance->base_path) + String(p_node);
 	for (const PropertyInfo &E : properties) {
 		if (E.name.begins_with(base_path)) {
 			property_map.erase(E.name);
@@ -835,14 +846,15 @@ void AnimationTree::_animation_node_removed(const ObjectID &p_oid, const StringN
 void AnimationTree::_update_properties_for_node(const StringName &p_base_path, const Ref<AnimationNode> &p_node) const {
 	ERR_FAIL_COND(p_node.is_null());
 	const String base_path_str = String(p_base_path);
+
+	AnimationNodeInstance &instance = instance_map[p_node->get_instance_id()];
+	instance.base_path = p_base_path;
+
 	if (!property_parent_map.has(p_base_path)) {
 		property_parent_map[p_base_path] = AHashMap<StringName, StringName>();
 	}
-	if (!property_reference_map.has(p_node->get_instance_id())) {
-		property_reference_map[p_node->get_instance_id()] = p_base_path;
-	}
 
-	base_parameters_map.insert(p_node->get_instance_id(), AnimationNodeBaseParameters());
+	instance.base_parameters = AnimationNodeBaseParameters();
 
 	if (p_node->get_input_count() && !input_activity_map.has(p_base_path)) {
 		LocalVector<Activity> activity;
@@ -853,7 +865,7 @@ void AnimationTree::_update_properties_for_node(const StringName &p_base_path, c
 			activity.push_back(a);
 		}
 		input_activity_map[p_base_path] = activity;
-		input_activity_map_get[String(p_base_path).substr(0, String(p_base_path).length() - 1)] = input_activity_map.get_index(p_base_path);
+		input_activity_map_get[base_path_str.substr(0, base_path_str.length() - 1)] = input_activity_map.get_index(p_base_path);
 	}
 
 	LocalVector<PropertyInfo> plist;
@@ -873,7 +885,7 @@ void AnimationTree::_update_properties_for_node(const StringName &p_base_path, c
 		pinfo.name = base_path_str + key;
 		properties.push_back(pinfo);
 	}
-	p_node->make_cache_dirty();
+	instance.property_cache.clear();
 	LocalVector<AnimationNode::ChildNode> children;
 	p_node->get_child_nodes(&children);
 
@@ -881,7 +893,7 @@ void AnimationTree::_update_properties_for_node(const StringName &p_base_path, c
 
 	for (const AnimationNode::ChildNode &E : children) {
 		// Build once instead of dynamically.
-		const String child_base = String(p_base_path) + E.name + "/";
+		const String child_base = base_path_str + E.name + "/";
 		by_child[E.name] = child_base;
 	}
 
@@ -896,9 +908,8 @@ void AnimationTree::_update_properties() const {
 	}
 
 	properties.clear();
-	property_reference_map.clear();
+	instance_map.clear();
 	property_parent_map.clear();
-	base_parameters_map.clear();
 	input_activity_map.clear();
 	input_activity_map_get.clear();
 	child_base_cache.clear();

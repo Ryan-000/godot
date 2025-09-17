@@ -59,13 +59,13 @@ public:
 	void get_parameter_list(LocalVector<PropertyInfo> *r_list) const override;
 	virtual Variant get_parameter_default_value(const StringName &p_parameter) const override;
 
-	virtual NodeTimeInfo get_node_time_info() const override; // Wrapper of get_parameter().
+	virtual NodeTimeInfo get_node_time_info(ProcessState &p_process_state) const override; // Wrapper of get_parameter().
 
 	static Vector<String> (*get_editable_animation_list)();
 
 	virtual String get_caption() const override;
-	virtual NodeTimeInfo process(const AnimationMixer::PlaybackInfo &p_playback_info, bool p_test_only = false) override;
-	virtual NodeTimeInfo _process(const AnimationMixer::PlaybackInfo &p_playback_info, bool p_test_only = false) override;
+	virtual NodeTimeInfo process(ProcessState &p_process_state, const AnimationMixer::PlaybackInfo &p_playback_info, bool p_test_only = false) override;
+	virtual NodeTimeInfo _process(ProcessState &p_process_state, const AnimationMixer::PlaybackInfo &p_playback_info, bool p_test_only = false) override;
 
 	void set_animation(const StringName &p_name);
 	StringName get_animation() const;
@@ -73,8 +73,8 @@ public:
 	void set_play_mode(PlayMode p_play_mode);
 	PlayMode get_play_mode() const;
 
-	void set_backward(bool p_backward);
-	bool is_backward() const;
+	void set_backward(ProcessState &p_process_state, bool p_backward);
+	bool is_backward(ProcessState &p_process_state) const;
 
 	void set_advance_on_start(bool p_advance_on_start);
 	bool is_advance_on_start() const;
@@ -193,7 +193,7 @@ public:
 	bool is_loop_broken_at_end() const;
 
 	virtual bool has_filter() const override;
-	virtual NodeTimeInfo _process(const AnimationMixer::PlaybackInfo &p_playback_info, bool p_test_only = false) override;
+	virtual NodeTimeInfo _process(ProcessState &p_process_state, const AnimationMixer::PlaybackInfo &p_playback_info, bool p_test_only = false) override;
 
 	AnimationNodeOneShot();
 };
@@ -213,7 +213,7 @@ public:
 	virtual String get_caption() const override;
 
 	virtual bool has_filter() const override;
-	virtual NodeTimeInfo _process(const AnimationMixer::PlaybackInfo &p_playback_info, bool p_test_only = false) override;
+	virtual NodeTimeInfo _process(ProcessState &p_process_state, const AnimationMixer::PlaybackInfo &p_playback_info, bool p_test_only = false) override;
 
 	AnimationNodeAdd2();
 };
@@ -230,7 +230,7 @@ public:
 	virtual String get_caption() const override;
 
 	virtual bool has_filter() const override;
-	virtual NodeTimeInfo _process(const AnimationMixer::PlaybackInfo &p_playback_info, bool p_test_only = false) override;
+	virtual NodeTimeInfo _process(ProcessState &p_process_state, const AnimationMixer::PlaybackInfo &p_playback_info, bool p_test_only = false) override;
 
 	AnimationNodeAdd3();
 };
@@ -245,7 +245,7 @@ public:
 	virtual Variant get_parameter_default_value(const StringName &p_parameter) const override;
 
 	virtual String get_caption() const override;
-	virtual NodeTimeInfo _process(const AnimationMixer::PlaybackInfo &p_playback_info, bool p_test_only = false) override;
+	virtual NodeTimeInfo _process(ProcessState &p_process_state, const AnimationMixer::PlaybackInfo &p_playback_info, bool p_test_only = false) override;
 
 	virtual bool has_filter() const override;
 	AnimationNodeBlend2();
@@ -262,7 +262,7 @@ public:
 
 	virtual String get_caption() const override;
 
-	virtual NodeTimeInfo _process(const AnimationMixer::PlaybackInfo &p_playback_info, bool p_test_only = false) override;
+	virtual NodeTimeInfo _process(ProcessState &p_process_state, const AnimationMixer::PlaybackInfo &p_playback_info, bool p_test_only = false) override;
 	AnimationNodeBlend3();
 };
 
@@ -278,7 +278,7 @@ public:
 	virtual String get_caption() const override;
 
 	virtual bool has_filter() const override;
-	virtual NodeTimeInfo _process(const AnimationMixer::PlaybackInfo &p_playback_info, bool p_test_only = false) override;
+	virtual NodeTimeInfo _process(ProcessState &p_process_state, const AnimationMixer::PlaybackInfo &p_playback_info, bool p_test_only = false) override;
 
 	AnimationNodeSub2();
 };
@@ -294,7 +294,7 @@ public:
 
 	virtual String get_caption() const override;
 
-	virtual NodeTimeInfo _process(const AnimationMixer::PlaybackInfo &p_playback_info, bool p_test_only = false) override;
+	virtual NodeTimeInfo _process(ProcessState &p_process_state, const AnimationMixer::PlaybackInfo &p_playback_info, bool p_test_only = false) override;
 
 	AnimationNodeTimeScale();
 };
@@ -314,7 +314,7 @@ public:
 
 	virtual String get_caption() const override;
 
-	virtual NodeTimeInfo _process(const AnimationMixer::PlaybackInfo &p_playback_info, bool p_test_only = false) override;
+	virtual NodeTimeInfo _process(ProcessState &p_process_state, const AnimationMixer::PlaybackInfo &p_playback_info, bool p_test_only = false) override;
 
 	void set_explicit_elapse(bool p_enable);
 	bool is_explicit_elapse() const;
@@ -384,7 +384,7 @@ public:
 	void set_allow_transition_to_self(bool p_enable);
 	bool is_allow_transition_to_self() const;
 
-	virtual NodeTimeInfo _process(const AnimationMixer::PlaybackInfo &p_playback_info, bool p_test_only = false) override;
+	virtual NodeTimeInfo _process(ProcessState &p_process_state, const AnimationMixer::PlaybackInfo &p_playback_info, bool p_test_only = false) override;
 
 	AnimationNodeTransition();
 };
@@ -394,7 +394,7 @@ class AnimationNodeOutput : public AnimationNode {
 
 public:
 	virtual String get_caption() const override;
-	virtual NodeTimeInfo _process(const AnimationMixer::PlaybackInfo &p_playback_info, bool p_test_only = false) override;
+	virtual NodeTimeInfo _process(ProcessState &p_process_state, const AnimationMixer::PlaybackInfo &p_playback_info, bool p_test_only = false) override;
 	AnimationNodeOutput();
 };
 
@@ -468,7 +468,7 @@ public:
 	void get_node_connections(List<NodeConnection> *r_connections) const;
 
 	virtual String get_caption() const override;
-	virtual NodeTimeInfo _process(const AnimationMixer::PlaybackInfo &p_playback_info, bool p_test_only = false) override;
+	virtual NodeTimeInfo _process(ProcessState &p_process_state, const AnimationMixer::PlaybackInfo &p_playback_info, bool p_test_only = false) override;
 
 	LocalVector<StringName> get_node_list() const;
 	TypedArray<StringName> get_node_list_as_typed_array() const;
