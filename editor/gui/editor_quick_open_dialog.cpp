@@ -505,11 +505,6 @@ void QuickOpenResultContainer::_setup_candidate(QuickOpenResultCandidate &p_cand
 	}
 }
 
-void QuickOpenResultContainer::_setup_candidate(QuickOpenResultCandidate &p_candidate, const FuzzySearchResult &p_result) {
-	_setup_candidate(p_candidate, p_result.target);
-	p_candidate.result = &p_result;
-}
-
 void QuickOpenResultContainer::update_results() {
 	candidates.clear();
 	if (query.is_empty()) {
@@ -547,15 +542,79 @@ void QuickOpenResultContainer::_update_fuzzy_search_results() {
 	fuzzy_search.max_misses = fuzzy_matching ? max_misses : 0;
 	fuzzy_search.search_all(filepaths, search_results);
 }
+using DirectoryPredicateFn = bool (*)(EditorFileSystemDirectory &);
+void _fill_owners(EditorFileSystemDirectory *p_root, const String& p_file, LocalVector<String> &r_owners, DirectoryPredicateFn p_directory_predicate = nullptr) {
+	LocalVector<EditorFileSystemDirectory *> stack;
+	stack.clear();
+	stack.push_back(p_root);
 
-void QuickOpenResultContainer::_score_and_sort_candidates() {
-	_update_fuzzy_search_results();
-	candidates.resize(search_results.size());
-	QuickOpenResultCandidate *candidates_write = candidates.ptrw();
-	for (const FuzzySearchResult &result : search_results) {
-		_setup_candidate(*candidates_write++, result);
+	while (stack.size() > 0) {
+		EditorFileSystemDirectory *dir = stack[stack.size() - 1]; // .last()
+		stack.remove_at(stack.size() - 1); // pop_back()
+
+		for (int i = 0; i < dir->get_subdir_count(); i++) {
+			EditorFileSystemDirectory *subdir = dir->get_subdir(i);
+			if (p_directory_predicate && !p_directory_predicate(*subdir)) {
+				continue;
+			}
+			stack.push_back(subdir);
+		}
+
+		for (int i = 0; i < dir->get_file_count(); i++) {
+			if (dir->get_file_deps(i).has(p_file)) {
+				r_owners.push_back(dir->get_file_path(i));
+			}
+		}
 	}
 }
+
+
+
+void QuickOpenResultContainer::_score_and_sort_candidates() {
+	if (!query.begins_with("uid://")) {
+		_update_fuzzy_search_results();
+		candidates.resize(search_results.size());
+		QuickOpenResultCandidate *candidates_write = candidates.ptrw();
+		for (const FuzzySearchResult &result : search_results) {
+			QuickOpenResultCandidate& candidate = *candidates_write++;
+			_setup_candidate(candidate, result.target);
+			candidate.result = &result;
+		}
+	} else { // Special case for uid, that is not fuzzy searched.
+		candidates.clear();
+		ResourceUID::ID id = ResourceUID::get_singleton()->text_to_id(query);
+		if (id != ResourceUID::INVALID_ID && ResourceUID::get_singleton()->has_id(id)) {
+			const String id_path = ResourceUID::get_singleton()->get_id_path(id);
+
+			// For convenience, also add the owners, so it's easier for a user to find the associated files
+			LocalVector<String> paths_to_add;
+			paths_to_add.push_back(query); // The file itself
+
+			DirectoryPredicateFn predicate = nullptr;
+			if (!include_addons_toggle->is_pressed()) {
+				predicate = []( EditorFileSystemDirectory &editor_file_system_directory) {
+					// Skip top level addons folder.
+					if (editor_file_system_directory.get_parent() && !editor_file_system_directory.get_parent()->get_parent() && editor_file_system_directory.get_name() == "addons") {
+						return false;
+					}
+
+					return true;
+				};
+			}
+
+			_fill_owners(EditorFileSystem::get_singleton()->get_filesystem(), id_path, paths_to_add, predicate);
+
+			// Add paths
+			candidates.resize(paths_to_add.size());
+			QuickOpenResultCandidate *candidates_write = candidates.ptrw();
+			for (const String &path : paths_to_add) {
+				QuickOpenResultCandidate& candidate = *candidates_write++;
+				_setup_candidate(candidate, path);
+			}
+		}
+	}
+}
+
 
 void QuickOpenResultContainer::_update_result_items(int p_new_visible_results_count, int p_new_selection_index) {
 	// Only need to update items that were not hidden in previous update.

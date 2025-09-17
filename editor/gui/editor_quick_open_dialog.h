@@ -153,7 +153,6 @@ private:
 
 	Vector<QuickOpenResultCandidate> *_get_history();
 	void _setup_candidate(QuickOpenResultCandidate &p_candidate, const String &p_filepath);
-	void _setup_candidate(QuickOpenResultCandidate &p_candidate, const FuzzySearchResult &p_result);
 	void _update_fuzzy_search_results();
 	void _use_default_candidates();
 	void _score_and_sort_candidates();
