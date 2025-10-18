@@ -261,6 +261,7 @@ void MultiplayerSynchronizer::_bind_methods() {
 
 	ClassDB::bind_method(D_METHOD("set_visibility_public", "visible"), &MultiplayerSynchronizer::set_visibility_public);
 	ClassDB::bind_method(D_METHOD("is_visibility_public"), &MultiplayerSynchronizer::is_visibility_public);
+	ClassDB::bind_method(D_METHOD("is_visible_to", "peer"), &MultiplayerSynchronizer::is_visible_to);
 
 	ClassDB::bind_method(D_METHOD("add_visibility_filter", "filter"), &MultiplayerSynchronizer::add_visibility_filter);
 	ClassDB::bind_method(D_METHOD("remove_visibility_filter", "filter"), &MultiplayerSynchronizer::remove_visibility_filter);
