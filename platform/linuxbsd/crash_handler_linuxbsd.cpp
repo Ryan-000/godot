@@ -36,6 +36,8 @@
 #include "core/os/os.h"
 #include "core/string/print_string.h"
 #include "core/version.h"
+#include "core/io/dir_access.h"
+#include "core/io/file_access.h"
 #include "main/main.h"
 
 #ifndef DEBUG_ENABLED
@@ -50,6 +52,12 @@
 #include <csignal>
 #include <cstdlib>
 
+static void output_error(const Ref<FileAccess> &f, const String &p_string) {
+	f->store_string(p_string + "\n");
+	f->flush();
+	print_error(p_string);
+}
+
 static void handle_crash(int sig) {
 	signal(SIGSEGV, SIG_DFL);
 	signal(SIGFPE, SIG_DFL);
@@ -62,6 +70,16 @@ static void handle_crash(int sig) {
 	if (OS::get_singleton()->is_crash_handler_silent()) {
 		std::_Exit(0);
 	}
+
+	const String base_dir = OS::get_singleton()->get_user_data_dir().path_join("crashes");
+	if (!DirAccess::exists(base_dir)) {
+		DirAccess::make_dir_absolute(base_dir);
+	}
+
+	// include pid and time as well.
+	const String crash_file = base_dir.path_join(String("crash-") + itos(OS::get_singleton()->get_process_id()) + "-" + itos(OS::get_singleton()->get_unix_time()) + ".txt");
+	// Open file to dump backtrace
+	Ref<FileAccess> f = FileAccess::open(crash_file, FileAccess::WRITE);
 
 	void *bt_buffer[256];
 	size_t size = backtrace(bt_buffer, 256);
@@ -78,16 +96,16 @@ static void handle_crash(int sig) {
 	}
 
 	// Dump the backtrace to stderr with a message to the user
-	print_error("\n================================================================");
-	print_error(vformat("%s: Program crashed with signal %d", __FUNCTION__, sig));
+	output_error(f, "\n================================================================");
+	output_error(f,vformat("%s: Program crashed with signal %d", __FUNCTION__, sig));
 
 	// Print the engine version just before, so that people are reminded to include the version in backtrace reports.
 	if (String(GODOT_VERSION_HASH).is_empty()) {
-		print_error(vformat("Engine version: %s", GODOT_VERSION_FULL_NAME));
+		output_error(f,vformat("Engine version: %s", GODOT_VERSION_FULL_NAME));
 	} else {
-		print_error(vformat("Engine version: %s (%s)", GODOT_VERSION_FULL_NAME, GODOT_VERSION_HASH));
+		output_error(f,vformat("Engine version: %s (%s)", GODOT_VERSION_FULL_NAME, GODOT_VERSION_HASH));
 	}
-	print_error(vformat("Dumping the backtrace. %s", msg));
+	output_error(f,vformat("Dumping the backtrace. %s", msg));
 	char **strings = backtrace_symbols(bt_buffer, size);
 	// PIE executable relocation, zero for non-PIE executables
 #ifdef __GLIBC__
@@ -139,19 +157,19 @@ static void handle_crash(int sig) {
 			}
 
 			// Simplify printed file paths to remove redundant `/./` sections (e.g. `/opt/godot/./core` -> `/opt/godot/core`).
-			print_error(vformat("[%d] %s (%s)", (int64_t)i, fname, err == OK ? addr2line_results[i].replace("/./", "/") : ""));
+			output_error(f,vformat("[%d] %s (%s)", (int64_t)i, fname, err == OK ? addr2line_results[i].replace("/./", "/") : ""));
 		}
 
 		free(strings);
 	}
-	print_error("-- END OF C++ BACKTRACE --");
-	print_error("================================================================");
+	output_error(f,"-- END OF C++ BACKTRACE --");
+	output_error(f,"================================================================");
 
 	for (const Ref<ScriptBacktrace> &backtrace : ScriptServer::capture_script_backtraces(false)) {
 		if (!backtrace->is_empty()) {
-			print_error(backtrace->format());
-			print_error(vformat("-- END OF %s BACKTRACE --", backtrace->get_language_name().to_upper()));
-			print_error("================================================================");
+			output_error(f,backtrace->format());
+			output_error(f,vformat("-- END OF %s BACKTRACE --", backtrace->get_language_name().to_upper()));
+			output_error(f,"================================================================");
 		}
 	}
 
