@@ -30,6 +30,11 @@
 
 #include "noise_texture_2d.h"
 
+#include "core/crypto/crypto_core.h"
+#include "core/io/dir_access.h"
+#include "core/io/file_access.h"
+#include "core/io/stream_peer.h"
+#include "core/variant/variant_utility.h"
 #include "noise.h"
 
 #include "servers/rendering/rendering_server.h"
@@ -84,6 +89,8 @@ void NoiseTexture2D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_bump_strength", "bump_strength"), &NoiseTexture2D::set_bump_strength);
 	ClassDB::bind_method(D_METHOD("get_bump_strength"), &NoiseTexture2D::get_bump_strength);
 
+	ClassDB::bind_method(D_METHOD("save_cache_to_disk"), &NoiseTexture2D::save_cache_to_disk);
+
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "width", PROPERTY_HINT_RANGE, "1,2048,1,or_greater,suffix:px"), "set_width", "get_width");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "height", PROPERTY_HINT_RANGE, "1,2048,1,or_greater,suffix:px"), "set_height", "get_height");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "generate_mipmaps"), "set_generate_mipmaps", "is_generating_mipmaps");
@@ -129,6 +136,98 @@ void NoiseTexture2D::_set_texture_image(const Ref<Image> &p_image) {
 	emit_changed();
 }
 
+String NoiseTexture2D::_compute_cache_key() const {
+	CryptoCore::SHA256Context ctx;
+	ERR_FAIL_COND_V(ctx.start() != OK, String());
+	Ref<StreamPeerBuffer> buffer;
+	buffer.instantiate();
+
+	buffer->put_string(get_class());
+	buffer->put_32(size.x);
+	buffer->put_32(size.y);
+	buffer->put_8(invert ? 1 : 0);
+	buffer->put_8(in_3d_space ? 1 : 0);
+	buffer->put_8(generate_mipmaps ? 1 : 0);
+	buffer->put_8(seamless ? 1 : 0);
+	buffer->put_float(seamless_blend_skirt);
+	buffer->put_8(normalize ? 1 : 0);
+	buffer->put_8(as_normal_map ? 1 : 0);
+	buffer->put_float(bump_strength);
+
+	if (color_ramp.is_valid()) {
+		buffer->put_8(1);
+		buffer->put_32(color_ramp->get_interpolation_mode());
+		buffer->put_32(color_ramp->get_interpolation_color_space());
+		buffer->put_32(color_ramp->get_point_count());
+		for (int i = 0; i < color_ramp->get_point_count(); i++) {
+			buffer->put_float(color_ramp->get_offset(i));
+			const Color c = color_ramp->get_color(i);
+			buffer->put_float(c.r);
+			buffer->put_float(c.g);
+			buffer->put_float(c.b);
+			buffer->put_float(c.a);
+		}
+	} else {
+		buffer->put_8(0);
+	}
+
+	if (noise.is_valid()) {
+		buffer->put_8(1);
+		buffer->put_string(noise->get_class());
+
+		// rest of properties.
+		List<PropertyInfo> plist;
+		noise->get_property_list(&plist);
+		for (const PropertyInfo &E : plist) {
+			if (!(E.usage & PROPERTY_USAGE_STORAGE)) {
+				continue;
+			}
+
+			Variant v = noise->get(E.name);
+			buffer->put_string(E.name);
+			buffer->put_var(v);
+		}
+	} else {
+		buffer->put_8(0);
+	}
+
+	ctx.update(buffer->get_data_array().ptr(), buffer->get_size());
+
+	unsigned char hash[32];
+	ctx.finish(hash);
+
+	return String::hex_encode_buffer(hash, 32);
+}
+
+String NoiseTexture2D::_cache_path_for_key(const String &p_key) const {
+	return cache_dir.path_join(p_key + ".png");
+}
+
+Ref<Image> NoiseTexture2D::_try_load_cached(const String &p_key) const {
+	if (!use_disk_cache) {
+		return Ref<Image>();
+	}
+
+	const String path = _cache_path_for_key(p_key);
+	if (!FileAccess::exists(path)) {
+		return Ref<Image>();
+	}
+
+	Ref<Image> img;
+	img.instantiate();
+	if (const Error err = img->load(path); err != OK) {
+		return Ref<Image>();
+	}
+	// Defensive sanity checks.
+	if (img->get_width() != size.x || img->get_height() != size.y) {
+		return Ref<Image>();
+	}
+	if (generate_mipmaps && !img->has_mipmaps()) {
+		img->generate_mipmaps();
+	}
+	return img;
+}
+
 void NoiseTexture2D::_thread_done(const Ref<Image> &p_image) {
 	_set_texture_image(p_image);
 	noise_thread.wait_to_finish();
@@ -158,6 +257,15 @@ Ref<Image> NoiseTexture2D::_generate_texture() {
 
 	if (ref_noise.is_null()) {
 		return Ref<Image>();
+	}
+
+	// Try disk cache first.
+	const String key = _compute_cache_key();
+	if (use_disk_cache) {
+		Ref<Image> cached = _try_load_cached(key);
+		if (cached.is_valid()) {
+			return cached;
+		}
 	}
 
 	Ref<Image> new_image;
@@ -219,6 +327,26 @@ void NoiseTexture2D::_update_texture() {
 		_set_texture_image(new_image);
 	}
 	update_queued = false;
+}
+
+void NoiseTexture2D::save_cache_to_disk() {
+	if (!use_disk_cache) {
+		return;
+	}
+
+	if (image.is_null()) {
+		Ref<Image> new_image = _generate_texture();
+		_set_texture_image(new_image);
+	}
+
+	ERR_FAIL_COND_MSG(image.is_null(), "Cannot save cache to disk, image is null.");
+
+	DirAccess::make_dir_recursive_absolute(cache_dir);
+
+	const String key = _compute_cache_key();
+	const String &path = _cache_path_for_key(key);
+	const Error error = image->save_png(path); // ignore error on purpose; cache best-effort
+	ERR_FAIL_COND_MSG(error != OK, vformat("Failed to save cache image to '%s' (error %s)", path, VariantUtilityFunctions::error_string(error)));
 }
 
 void NoiseTexture2D::set_noise(Ref<Noise> p_noise) {
