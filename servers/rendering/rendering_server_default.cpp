@@ -204,7 +204,7 @@ void RenderingServerDefault::_draw(bool p_swap_buffers, double frame_step) {
 #ifdef DEBUG_ENABLED
 	GodotProfileZoneGrouped(_profile_zone, "memory_info");
 	RSG::utilities->update_memory_info();
-#define
+#endif
 }
 
 void RenderingServerDefault::_run_post_draw_steps() {
