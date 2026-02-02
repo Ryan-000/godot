@@ -625,6 +625,11 @@ void ScriptEditorDebugger::_msg_error(uint64_t p_thread_id, const Array &p_data)
 	DebuggerMarshalls::OutputError oe;
 	ERR_FAIL_COND_MSG(oe.deserialize(p_data) == false, "Failed to deserialize error message");
 
+	bool filtered = EditorDebuggerNode::get_singleton()->plugins_filter_error(this, oe);
+	if (filtered) {
+		return;
+	}
+
 	// Format time.
 	Array time_vals = { oe.hr, oe.min, oe.sec, oe.msec };
 	bool e;

@@ -30,6 +30,7 @@
 
 #pragma once
 
+#include "core/debugger/debugger_marshalls.h"
 #include "core/object/script_language.h"
 #include "editor/debugger/editor_debugger_server.h"
 #include "editor/docks/editor_dock.h"
@@ -225,6 +226,7 @@ public:
 	void stop(bool p_force = false);
 
 	bool plugins_capture(ScriptEditorDebugger *p_debugger, const String &p_message, const Array &p_data);
+	bool plugins_filter_error(ScriptEditorDebugger *p_debugger, DebuggerMarshalls::OutputError &oe);
 	void add_debugger_plugin(const Ref<EditorDebuggerPlugin> &p_plugin);
 	void remove_debugger_plugin(const Ref<EditorDebuggerPlugin> &p_plugin);
 };
