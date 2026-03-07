@@ -309,6 +309,12 @@
 				Emitted when the [param node] enters this tree.
 			</description>
 		</signal>
+		<signal name="node_adding">
+			<param index="0" name="node" type="Node" />
+			<description>
+				Emitted right before the notification [constant Node.NOTIFICATION_ENTER_TREE] is called on the [param node].
+			</description>
+		</signal>
 		<signal name="node_configuration_warning_changed">
 			<param index="0" name="node" type="Node" />
 			<description>

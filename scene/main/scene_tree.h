@@ -159,6 +159,7 @@ private:
 	SceneTreeFTI scene_tree_fti;
 
 	StringName tree_changed_name = "tree_changed";
+	StringName node_adding_name = "node_adding";
 	StringName node_added_name = "node_added";
 	StringName node_removed_name = "node_removed";
 	StringName node_renamed_name = "node_renamed";
@@ -228,6 +229,7 @@ private:
 	friend class Node;
 
 	void tree_changed();
+	void node_adding(Node *p_node);
 	void node_added(Node *p_node);
 	void node_removed(Node *p_node);
 	void node_renamed(Node *p_node);
