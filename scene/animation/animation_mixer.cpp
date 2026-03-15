@@ -1922,19 +1922,21 @@ void AnimationMixer::_blend_apply() {
 						return;
 					}
 
-					// TODO: Once https://github.com/godotengine/godot/pull/113441 makes it in
-					// Use set_bone_pose_components when loc_used, rot_used, and scale_used are all true.
-
+					// Would be nice if Node3D also had a masked setter.
+					// That way we could store the mask on TrackCacheTransform and use it for both.
+					uint32_t component_mask = 0;
 					if (t->loc_used) {
-						t_skeleton->set_bone_pose_position(t->bone_idx, t->loc);
+						component_mask |= Skeleton3D::BONE_POSE_COMPONENT_POSITION;
 					}
 					if (t->rot_used) {
-						t_skeleton->set_bone_pose_rotation(t->bone_idx, t->rot);
+						component_mask |= Skeleton3D::BONE_POSE_COMPONENT_ROTATION;
 					}
 					if (t->scale_used) {
-						t_skeleton->set_bone_pose_scale(t->bone_idx, t->scale);
+						component_mask |= Skeleton3D::BONE_POSE_COMPONENT_SCALE;
 					}
-
+					if (component_mask != 0) {
+						t_skeleton->set_bone_pose_components(t->bone_idx, component_mask, t->loc, t->rot, t->scale);
+					}
 				} else if (!t->skeleton_id.is_valid()) {
 					Node3D *t_node_3d = ObjectDB::get_instance<Node3D>(t->object_id);
 					if (!t_node_3d) {

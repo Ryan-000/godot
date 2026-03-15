@@ -324,7 +324,6 @@ void Skeleton3D::_notification(int p_what) {
 
 			// Process modifiers.
 
-			LocalVector<BonePoseBackup> bones_backup;
 			_find_modifiers();
 			if (!modifiers.is_empty()) {
 				bones_backup.resize(bones.size());
@@ -855,6 +854,31 @@ void Skeleton3D::set_bone_pose(int p_bone, const Transform3D &p_pose) {
 		_make_bone_global_pose_subtree_dirty(p_bone);
 	}
 }
+
+
+void Skeleton3D::set_bone_pose_components(int p_bone, uint32_t p_component_mask, const Vector3 &p_position, const Quaternion &p_rotation, const Vector3 &p_scale) {
+	const int bone_size = bones.size();
+	ERR_FAIL_INDEX(p_bone, bone_size);
+
+	Bone &bone = bones[p_bone];
+
+	if (p_component_mask & BONE_POSE_COMPONENT_POSITION) {
+		bone.pose_position = p_position;
+	}
+	if (p_component_mask & BONE_POSE_COMPONENT_ROTATION) {
+		bone.pose_rotation = p_rotation;
+	}
+	if (p_component_mask & BONE_POSE_COMPONENT_SCALE) {
+		bone.pose_scale = p_scale;
+	}
+
+	bone.pose_cache_dirty = true;
+	if (is_inside_tree()) {
+		_make_dirty();
+		_make_bone_global_pose_subtree_dirty(p_bone);
+	}
+}
+
 
 void Skeleton3D::set_bone_pose_position(int p_bone, const Vector3 &p_position) {
 	const int bone_size = bones.size();
@@ -1419,6 +1443,7 @@ void Skeleton3D::physical_bones_remove_collision_exception(RID p_exception) {
 #endif // _DISABLE_DEPRECATED
 
 Skeleton3D::Skeleton3D() {
+	_define_ancestry(AncestralClass::SKELETON_3D);
 }
 
 Skeleton3D::~Skeleton3D() {
