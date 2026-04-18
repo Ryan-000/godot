@@ -95,6 +95,11 @@ namespace Godot
             return instance.NativePtr;
         }
 
+        public static GodotObject FromPtr(IntPtr nativePtr)
+        {
+            return InteropUtils.UnmanagedGetManaged(nativePtr);
+        }
+
         ~GodotObject()
         {
             Dispose(false);
