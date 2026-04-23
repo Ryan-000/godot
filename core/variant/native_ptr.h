@@ -151,7 +151,7 @@ struct PtrToArg<GDExtensionConstPtr<T>> {
 template <typename T>
 struct PtrToArg<GDExtensionPtr<T>> {
 	_FORCE_INLINE_ static GDExtensionPtr<T> convert(const void *p_ptr) {
-		return GDExtensionPtr<T>(reinterpret_cast<const T *>(p_ptr));
+		return GDExtensionPtr<T>(reinterpret_cast<T *>(const_cast<void *>(p_ptr)));
 	}
 	typedef T *EncodeT;
 	_FORCE_INLINE_ static void encode(GDExtensionPtr<T> p_val, void *p_ptr) {
@@ -177,3 +177,22 @@ GDVIRTUAL_NATIVE_PTR(int64_t)
 GDVIRTUAL_NATIVE_PTR(uint64_t)
 GDVIRTUAL_NATIVE_PTR(float)
 GDVIRTUAL_NATIVE_PTR(double)
+
+// Other trivial types (subset of variant)
+GDVIRTUAL_NATIVE_PTR(AABB)
+GDVIRTUAL_NATIVE_PTR(Basis)
+GDVIRTUAL_NATIVE_PTR(Color)
+GDVIRTUAL_NATIVE_PTR(Plane)
+GDVIRTUAL_NATIVE_PTR(Projection)
+GDVIRTUAL_NATIVE_PTR(Quaternion)
+GDVIRTUAL_NATIVE_PTR(Rect2)
+GDVIRTUAL_NATIVE_PTR(Rect2i)
+GDVIRTUAL_NATIVE_PTR(RID)
+GDVIRTUAL_NATIVE_PTR(Transform2D)
+GDVIRTUAL_NATIVE_PTR(Transform3D)
+GDVIRTUAL_NATIVE_PTR(Vector2)
+GDVIRTUAL_NATIVE_PTR(Vector2i)
+GDVIRTUAL_NATIVE_PTR(Vector3)
+GDVIRTUAL_NATIVE_PTR(Vector3i)
+GDVIRTUAL_NATIVE_PTR(Vector4)
+GDVIRTUAL_NATIVE_PTR(Vector4i)

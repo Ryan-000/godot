@@ -32,6 +32,7 @@
 
 #include "core/io/resource.h"
 #include "core/object/gdvirtual.gen.h"
+#include "core/variant/native_ptr.h"
 
 constexpr int MAX_CONTACTS_REPORTED_3D_MAX = 4096;
 
@@ -160,6 +161,8 @@ public:
 		Object *collider = nullptr;
 		int shape = 0;
 		int face_index = -1;
+
+		static constexpr const char *NATIVE_CODE = "Vector3 position;Vector3 normal;RID rid;ObjectID collider_id;Object *collider;int shape;int face_index";
 	};
 
 	virtual bool intersect_ray(const RayParameters &p_parameters, RayResult &r_result) = 0;
@@ -169,6 +172,8 @@ public:
 		ObjectID collider_id;
 		Object *collider = nullptr;
 		int shape = 0;
+
+		static constexpr const char *NATIVE_CODE = "RID rid;ObjectID collider_id;Object *collider;int shape";
 	};
 
 	struct PointParameters {
@@ -201,9 +206,28 @@ public:
 		ObjectID collider_id;
 		int shape = 0;
 		Vector3 linear_velocity; // Velocity at contact point.
+
+		static constexpr const char *NATIVE_CODE = "Vector3 point;Vector3 normal;RID rid;ObjectID collider_id;int shape;Vector3 linear_velocity";
 	};
 
+	struct CastMotionResult {
+		real_t closest_safe;
+		real_t closest_unsafe;
+
+		static constexpr const char *NATIVE_CODE = "real_t closest_safe;real_t closest_unsafe;";
+	};
+
+	struct ShapeContactPair {
+		Vector3 point_on_query_shape;
+		Vector3 point_on_collided_shape;
+
+		static constexpr const char *NATIVE_CODE = "Vector3 point_on_query_shape;Vector3 point_on_collided_shape;";
+	};
+
+	static_assert(sizeof(ShapeContactPair) == sizeof(Vector3) * 2);
+
 	virtual int intersect_shape(const ShapeParameters &p_parameters, ShapeResult *r_results, int p_result_max) = 0;
+	// TODO: Remove ShapeRestInfo *r_info, its always null in every call to cast_motion, and isn't supported at all in JoltPhysics3D.
 	virtual bool cast_motion(const ShapeParameters &p_parameters, real_t &p_closest_safe, real_t &p_closest_unsafe, ShapeRestInfo *r_info = nullptr) = 0;
 	virtual bool collide_shape(const ShapeParameters &p_parameters, Vector3 *r_results, int p_result_max, int &r_result_count) = 0;
 	virtual bool rest_info(const ShapeParameters &p_parameters, ShapeRestInfo *r_info) = 0;
@@ -211,7 +235,23 @@ public:
 	virtual Vector3 get_closest_point_to_object_volume(RID p_object, const Vector3 p_point) const = 0;
 
 	PhysicsDirectSpaceState3D();
+
+private:
+	// This API can still be improved, but right now we have to pass in Physics*QueryParameters3D as an Object (due to non-trivial HashSet<RID> exclude).
+	// Fixing this issue is would require a larger physics api redesign which is out of scope, so for now we will just have to live with this.
+	bool _intersect_ray_native(RequiredParam<PhysicsRayQueryParameters3D> rp_ray_query, GDExtensionPtr<RayResult> r_ray_result);
+	int _intersect_point_native(RequiredParam<PhysicsPointQueryParameters3D> rp_point_query, GDExtensionPtr<ShapeResult> r_intersected_shapes, int p_intersected_shapes_max);
+	int _intersect_shape_native(RequiredParam<PhysicsShapeQueryParameters3D> rp_shape_query, GDExtensionPtr<ShapeResult> r_intersected_shapes, int p_intersected_shapes_max);
+	bool _cast_motion_native(RequiredParam<PhysicsShapeQueryParameters3D> rp_shape_query, GDExtensionPtr<CastMotionResult> r_cast_motion_result);
+	int _collide_shape_native(RequiredParam<PhysicsShapeQueryParameters3D> rp_shape_query, GDExtensionPtr<ShapeContactPair> r_shape_contact_pairs, int p_shape_contact_pairs_max);
+	bool _get_rest_info_native(RequiredParam<PhysicsShapeQueryParameters3D> rp_shape_query, GDExtensionPtr<ShapeRestInfo> r_rest_info);
 };
+
+GDVIRTUAL_NATIVE_PTR(PhysicsDirectSpaceState3D::RayResult)
+GDVIRTUAL_NATIVE_PTR(PhysicsDirectSpaceState3D::ShapeResult)
+GDVIRTUAL_NATIVE_PTR(PhysicsDirectSpaceState3D::ShapeRestInfo)
+GDVIRTUAL_NATIVE_PTR(PhysicsDirectSpaceState3D::CastMotionResult)
+GDVIRTUAL_NATIVE_PTR(PhysicsDirectSpaceState3D::ShapeContactPair)
 
 class PhysicsServer3DRenderingServerHandler : public Object {
 	GDCLASS(PhysicsServer3DRenderingServerHandler, Object)
@@ -556,6 +596,8 @@ public:
 		real_t get_angle(Vector3 p_up_direction) const {
 			return Math::acos(normal.dot(p_up_direction));
 		}
+
+		static constexpr const char *NATIVE_CODE = "Vector3 position;Vector3 normal;Vector3 collider_velocity;Vector3 collider_angular_velocity;real_t depth;int local_shape;ObjectID collider_id;RID collider;int collider_shape";
 	};
 
 	struct MotionResult {
@@ -568,6 +610,8 @@ public:
 		static const int MAX_COLLISIONS = 32;
 		MotionCollision collisions[MAX_COLLISIONS];
 		int collision_count = 0;
+
+		static constexpr const char *NATIVE_CODE = "Vector3 travel;Vector3 remainder;real_t collision_depth;real_t collision_safe_fraction;real_t collision_unsafe_fraction;PhysicsServer3DExtensionMotionCollision collisions[32];int collision_count";
 	};
 
 	virtual bool body_test_motion(RID p_body, const MotionParameters &p_parameters, MotionResult *r_result = nullptr) = 0;
