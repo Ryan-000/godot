@@ -235,6 +235,12 @@ public partial class VariantUtils
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
+    public unsafe static ref T DangerouslyReinterpretAsRef<T>(in godot_variant variant) where T : unmanaged
+    {
+        return ref Unsafe.AsRef<T>((void*)variant.Int);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
     public static T ConvertTo<[MustBeVariant] T>(in godot_variant variant)
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
