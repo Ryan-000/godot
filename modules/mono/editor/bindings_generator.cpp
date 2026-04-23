@@ -1538,6 +1538,13 @@ Error BindingsGenerator::_populate_method_icalls_table(const TypeInterface &p_it
 			ERR_FAIL_NULL_V_MSG(arg_type, ERR_BUG, "Argument type '" + iarg.type.cname + "' was not found.");
 
 			im_unique_sig += ",";
+			im_unique_sig += itos(iarg.param_modifier);
+			im_unique_sig += ",";
+			im_unique_sig += itos(iarg.pointer_metadata);
+			im_unique_sig += ",";
+			im_unique_sig += itos(iarg.is_buffer_capacity_argument);
+			im_unique_sig += ",";
+			im_unique_sig += itos(iarg.is_readonly);
 			im_unique_sig += get_arg_unique_sig(*arg_type);
 		}
 
@@ -1554,7 +1561,9 @@ Error BindingsGenerator::_populate_method_icalls_table(const TypeInterface &p_it
 		im_icall.return_type = imethod.return_type;
 
 		for (const List<ArgumentInterface>::Element *F = imethod.arguments.front(); F; F = F->next()) {
-			im_icall.argument_types.push_back(F->get().type);
+			const ArgumentInterface &arg = F->get();
+			im_icall.argument_types.push_back(arg.type);
+			im_icall.argument_metadata.push_back({arg.param_modifier, arg.pointer_metadata, arg.is_buffer_capacity_argument, arg.is_readonly});
 		}
 
 		List<InternalCall>::Element *match = method_icalls.find(im_icall);
@@ -1756,9 +1765,11 @@ Error BindingsGenerator::generate_cs_core_project(const String &p_proj_dir) {
 	da->change_dir(p_proj_dir);
 	da->make_dir("Generated");
 	da->make_dir("Generated/GodotObjects");
+	da->make_dir("Generated/NativeStructures");
 
 	String base_gen_dir = Path::join(p_proj_dir, "Generated");
 	String godot_objects_gen_dir = Path::join(base_gen_dir, "GodotObjects");
+	String native_structs_gen_dir = Path::join(base_gen_dir, "NativeStructures");
 
 	Vector<String> compile_items;
 
@@ -1798,6 +1809,37 @@ Error BindingsGenerator::generate_cs_core_project(const String &p_proj_dir) {
 
 		String output_file = Path::join(godot_objects_gen_dir, itype.proxy_name + ".cs");
 		Error err = _generate_cs_type(itype, output_file);
+
+		if (err == ERR_SKIP) {
+			continue;
+		}
+
+		if (err != OK) {
+			return err;
+		}
+
+		compile_items.push_back(output_file);
+	}
+
+	for (const KeyValue<StringName, TypeInterface> &E : native_struct_types) {
+		const TypeInterface &itype = E.value;
+
+		// TODO: Once ClassDB has APIType for native structs, we need to filter here.
+		/*const bool is_editor_type = itype.api_type == ClassDB::API_EDITOR || itype.api_type == ClassDB::API_EDITOR_EXTENSION;
+		if (is_editor_type) {
+			continue;
+		}*/
+
+		Vector<String> parts;
+		for (const String &p: itype.type_name_path) {
+			const TypeInterface *t = _get_type_or_null(TypeReference(p));
+			ERR_FAIL_NULL_V_MSG(t, ERR_BUG, "Type '" + p + "' in the path of native struct '" + itype.name + "' was not found.");
+			parts.append(t->proxy_name);
+		}
+		parts.append(itype.proxy_name);
+		String path = String(".").join(parts);
+		String output_file = Path::join(native_structs_gen_dir, path + ".cs");
+		Error err = _generate_cs_native_struct_type(itype, output_file);
 
 		if (err == ERR_SKIP) {
 			continue;
@@ -2005,6 +2047,7 @@ Error BindingsGenerator::generate_cs_editor_project(const String &p_proj_dir) {
 
 		compile_items.push_back(output_file);
 	}
+	// TODO: Once ClassDB has APIType for native structs, we need to differentiate and generate editor structs here.
 
 	// Generate source file for editor type constructor dictionary.
 
@@ -2560,8 +2603,10 @@ Error BindingsGenerator::_generate_cs_type(const TypeInterface &itype, const Str
 
 					output << "new " << arg_cs_type << "(" << sformat(arg_type->cs_variant_to_managed, "args[" + itos(i) + "]", arg_type->cs_type, arg_type->name) << ")";
 				} else {
+					// native structs need fully qualified name, they might be in another type.
+					const bool is_native_struct_arg = native_struct_types.has(arg_type->cname);
 					output << sformat(arg_type->cs_variant_to_managed,
-							"args[" + itos(i) + "]", arg_type->cs_type, arg_type->name);
+							"args[" + itos(i) + "]", is_native_struct_arg ? _get_cs_native_struct_type_name(*arg_type) :  arg_type->cs_type, arg_type->name);
 				}
 			}
 
@@ -2893,6 +2938,244 @@ Error BindingsGenerator::_generate_cs_property(const BindingsGenerator::TypeInte
 	return OK;
 }
 
+class BindingsGenerator::CodeWriter {
+	StringBuilder output;
+	int indent_count = 0;
+	bool line_start = true;
+
+	void write_indent() {
+		for (int i = 0; i < indent_count; i++) {
+			output.append(CS_INDENT);
+		}
+
+		line_start = false;
+	}
+
+public:
+	StringBuilder &get_output() {
+		return output;
+	}
+
+	void write_line() {
+		output.append("\n");
+		line_start = true;
+	}
+
+	void write_line(const String &p_text) {
+		if (line_start) {
+			write_indent();
+		}
+
+		output.append(p_text);
+		output.append("\n");
+		line_start = true;
+	}
+
+	void begin_block(const String &p_header_line) {
+		if (!p_header_line.is_empty()) {
+			write_line(p_header_line);
+		}
+
+		write_line("{");
+		indent_count++;
+	}
+
+	void end_block() {
+		ERR_FAIL_COND(indent_count <= 0);
+
+		indent_count--;
+		write_line(String("}"));
+	}
+
+	class BlockScope {
+		CodeWriter *writer = nullptr;
+		String closing_suffix;
+
+	public:
+		BlockScope(CodeWriter &p_writer, const String &p_header_line) {
+			writer = &p_writer;
+			writer->begin_block(p_header_line);
+		}
+
+		BlockScope(const BlockScope &) = delete;
+		BlockScope &operator=(const BlockScope &) = delete;
+
+		BlockScope(BlockScope &&p_other) {
+			writer = p_other.writer;
+			p_other.writer = nullptr;
+		}
+
+		~BlockScope() {
+			if (writer != nullptr) {
+				writer->end_block();
+			}
+		}
+	};
+
+	[[nodiscard]] BlockScope block(const String &p_header_line) {
+		return BlockScope(*this, p_header_line);
+	}
+};
+
+Error BindingsGenerator::_generate_cs_native_struct_type(const TypeInterface &itype, const String &p_output_file) {
+	_log("Generating Native Struct %s.cs...\n", itype.proxy_name.utf8().get_data());
+
+	CodeWriter w;
+
+	w.write_line("namespace " BINDINGS_NAMESPACE ";");
+	w.write_line();
+	w.write_line("using System;"); // IntPtr
+	w.write_line("using System.Runtime.CompilerServices;"); // InlineArray
+	w.write_line("using System.Runtime.InteropServices;"); // StructLayout
+	w.write_line();
+	w.write_line("#nullable disable");
+	w.write_line();
+
+	// Some structs are nested in types, so we need to generate partial classes to contain them.
+	for (int64_t i = 0; i < itype.type_name_path.size(); ++i) {
+		const String &cname_part = itype.type_name_path[i];
+
+		String proxy_name = cname_part;
+		if (const TypeInterface *type = obj_types.getptr(cname_part)) {
+			proxy_name = type->proxy_name;
+		}
+
+		w.begin_block("partial class " + proxy_name);
+	}
+
+	// Right now we don't have metadata for docs and deprecation, but if we do get it, the logic in _generate_cs_type is a good reference.
+	w.write_line("[StructLayout(LayoutKind.Sequential)]");
+
+	{
+		CodeWriter::BlockScope struct_block = w.block("public struct " + itype.proxy_name); // doesnt need to be partial right now
+
+		// Handle constants for inline arrays.
+		bool emitted_constants = false;
+
+		for (const FieldInterface &ifield : itype.fields) {
+			if (!ifield.is_inline_array()) {
+				continue;
+			}
+
+			w.write_line("public const int " + _get_inline_array_constant_name(ifield) + " = " + itos(ifield.fixed_array_size) + ";");
+			emitted_constants = true;
+		}
+
+		if (emitted_constants) {
+			w.write_line();
+		}
+
+		// The actual fields themselves.
+		for (const FieldInterface &ifield : itype.fields) {
+			_log("Generating field '%s' for struct '%s'...\n", String(ifield.name).utf8().get_data(), itype.proxy_name.utf8().get_data());
+
+			Error field_err = _generate_cs_field(itype, ifield, w);
+			ERR_FAIL_COND_V_MSG(field_err != OK, field_err,
+					"Failed to generate field '" + ifield.name.operator String() +
+							"' for class '" + itype.name + "'.");
+		}
+
+		// Required structs for said inline arrays.
+		for (const FieldInterface &ifield : itype.fields) {
+			if (!ifield.is_inline_array()) {
+				continue;
+			}
+
+			Error buffer_err = _generate_cs_inline_array_buffer(ifield, w);
+			ERR_FAIL_COND_V_MSG(buffer_err != OK, buffer_err,
+					"Failed to generate inline array buffer for field '" + ifield.name.operator String() +
+							"' in struct '" + itype.name + "'.");
+		}
+	}
+
+	// Close partial classes.
+	for (int64_t i = itype.type_name_path.size() - 1; i >= 0; --i) {
+		w.end_block();
+	}
+
+	return _save_file(p_output_file, w.get_output());
+}
+
+Error BindingsGenerator::_generate_cs_field(
+		const BindingsGenerator::TypeInterface &p_itype,
+		const FieldInterface &p_ifield,
+		CodeWriter &p_writer) {
+
+	String field_type;
+	if (p_ifield.is_inline_array()) {
+		field_type = String(p_ifield.name) + String("InlineArray");
+	} else {
+		field_type = _get_cs_native_struct_field_type(p_ifield.type);
+	}
+
+	// Right now we don't have metadata for docs and deprecation, but if we do get it, the logic in _generate_cs_property is a good reference.
+	p_writer.write_line("public " + field_type + " " + p_ifield.name + ";");
+
+	return OK;
+}
+
+Error BindingsGenerator::_generate_cs_inline_array_buffer(const FieldInterface &p_ifield, CodeWriter &p_writer) {
+	ERR_FAIL_COND_V(!p_ifield.is_inline_array(), ERR_INVALID_PARAMETER);
+
+	String constant_name = _get_inline_array_constant_name(p_ifield);
+	String buffer_type_name = String(p_ifield.name) + String("InlineArray");
+	String element_type = _get_cs_native_struct_field_type(p_ifield.type);
+
+	p_writer.write_line();
+	p_writer.write_line("[InlineArray(" + constant_name + ")]");
+
+	{
+		CodeWriter::BlockScope buffer_block = p_writer.block("public struct " + buffer_type_name);
+		p_writer.write_line("private " + element_type + " _element0;");
+	}
+
+	return OK;
+}
+
+String BindingsGenerator::_get_cs_native_struct_type_name(const TypeInterface &p_native_struct_itype) const {
+	String result = "global::" BINDINGS_NAMESPACE;
+
+	for (int i = 0; i < p_native_struct_itype.type_name_path.size(); i++) {
+		const String &part = p_native_struct_itype.type_name_path[i];
+
+		String proxy_name = part;
+		if (const TypeInterface *containing_type = obj_types.getptr(part)) {
+			proxy_name = containing_type->proxy_name;
+		} else if (const TypeInterface *containing_struct = native_struct_types.getptr(part)) {
+			// we should also support nesting in other structs too if needed.
+			proxy_name = containing_struct->proxy_name;
+		}
+
+		result += ".";
+		result += proxy_name;
+	}
+
+	result += ".";
+	result += p_native_struct_itype.proxy_name;
+
+	return result;
+}
+
+String BindingsGenerator::_get_cs_native_struct_field_type(const TypeReference &p_type) {
+	if (const TypeInterface *itype = _get_type_or_null(p_type); itype) {
+		String name;
+		for (const String &p: itype->type_name_path) {
+			name += _get_type_or_null(TypeReference(p))->proxy_name + ".";
+		}
+		name += itype->proxy_name;
+		return name;
+	}
+	if (TypeInterface *en = enum_types.getptr(p_type.cname); en) {
+		return en->proxy_name;
+	}
+	_log("Falling back to: '%s' for field type .\n", String(p_type.cname).utf8().get_data());
+	return p_type.cname; // fallback
+}
+
+String BindingsGenerator::_get_inline_array_constant_name(const FieldInterface &p_field) const {
+	return "Max" + String(p_field.name);
+}
+
 Error BindingsGenerator::_generate_cs_method(const BindingsGenerator::TypeInterface &p_itype, const BindingsGenerator::MethodInterface &p_imethod, int &p_method_bind_count, StringBuilder &p_output, bool p_use_span) {
 	const TypeInterface *return_type = _get_type_or_singleton_or_null(p_imethod.return_type);
 	ERR_FAIL_NULL_V_MSG(return_type, ERR_BUG, "Return type '" + p_imethod.return_type.cname + "' was not found.");
@@ -2982,6 +3265,11 @@ Error BindingsGenerator::_generate_cs_method(const BindingsGenerator::TypeInterf
 		String arg_cs_type = arg_type->cs_type + _get_generic_type_parameters(*arg_type, iarg.type.generic_type_parameters);
 
 		bool use_span_for_arg = p_use_span && arg_type->is_span_compatible;
+		const bool is_native_struct_arg = native_struct_types.has(arg_type->cname);
+
+		if (iarg.is_buffer_capacity_argument) {
+			continue; // We don't expose the capacity to the user, it will be derived from the span they pass in.
+		}
 
 		// Add the current arguments to the signature
 		// If the argument has a default value which is not a constant, we will make it Nullable
@@ -2994,7 +3282,15 @@ Error BindingsGenerator::_generate_cs_method(const BindingsGenerator::TypeInterf
 				arguments_sig += "Nullable<";
 			}
 
-			if (use_span_for_arg) {
+			if (is_native_struct_arg) {
+				String span_element_type = _get_cs_native_struct_type_name(*arg_type);
+				if (iarg.pointer_metadata == ArgumentInterface::POINTER_METADATA_IS_POINTER_TO_BUFFER) {
+					arguments_sig += _render_span(iarg.is_readonly, span_element_type);
+				} else {
+					arguments_sig += _get_cs_parameter_modifier(iarg.param_modifier);
+					arguments_sig += span_element_type;
+				}
+			} else if (use_span_for_arg) {
 				arguments_sig += arg_type->c_type_in;
 			} else {
 				arguments_sig += arg_cs_type;
@@ -3073,7 +3369,14 @@ Error BindingsGenerator::_generate_cs_method(const BindingsGenerator::TypeInterf
 						String(), String(), String(), INDENT2);
 			}
 
-			icall_params += arg_type->cs_in_expr.is_empty() ? iarg.name : sformat(arg_type->cs_in_expr, iarg.name, arg_type->c_type);
+			if (is_native_struct_arg) {
+				if (iarg.pointer_metadata == ArgumentInterface::POINTER_METADATA_IS_POINTER) {
+					icall_params += _get_cs_parameter_modifier(iarg.param_modifier);
+				}
+				icall_params += iarg.name;
+			} else {
+				icall_params += arg_type->cs_in_expr.is_empty() ? iarg.name : sformat(arg_type->cs_in_expr, iarg.name, arg_type->c_type);
+			}
 		}
 
 		cs_in_expr_is_unsafe |= arg_type->cs_in_expr_is_unsafe;
@@ -3216,6 +3519,25 @@ Error BindingsGenerator::_generate_cs_method(const BindingsGenerator::TypeInterf
 	p_method_bind_count++;
 
 	return OK;
+}
+
+String BindingsGenerator::_render_span(bool p_is_readonly, const String &p_element_type) {
+	const char *span_type = p_is_readonly ? "ReadOnlySpan" : "Span";
+	return String(span_type) + "<" + p_element_type + ">";
+}
+
+String BindingsGenerator::_get_cs_parameter_modifier(ArgumentInterface::ParameterModifier p_modifier) const {
+	switch (p_modifier) {
+		case ArgumentInterface::REF:
+			return "ref ";
+		// I have decided to use 'in' instead of 'ref readonly' because it is a lot more ergonomic.
+		case ArgumentInterface::REF_READONLY:
+			return "in ";
+		case ArgumentInterface::OUT:
+			return "out ";
+		default:
+			return "";
+	}
 }
 
 Error BindingsGenerator::_generate_cs_signal(const BindingsGenerator::TypeInterface &p_itype, const BindingsGenerator::SignalInterface &p_isignal, StringBuilder &p_output) {
@@ -3450,6 +3772,7 @@ Error BindingsGenerator::_generate_cs_native_calls(const InternalCall &p_icall, 
 	StringBuilder c_func_sig;
 	StringBuilder c_in_statements;
 	StringBuilder c_args_var_content;
+	StringBuilder c_fixed_statements;
 
 	c_func_sig << "IntPtr " CS_PARAM_METHODBIND;
 
@@ -3464,6 +3787,8 @@ Error BindingsGenerator::_generate_cs_native_calls(const InternalCall &p_icall, 
 		ERR_FAIL_NULL_V_MSG(arg_type, ERR_BUG, "Argument type '" + arg_type_ref.cname + "' was not found.");
 
 		String c_param_name = "arg" + itos(i + 1);
+		const bool is_native_struct_arg = native_struct_types.has(arg_type->cname);
+		const InternalCall::ArgumentMetadata &argument_metadata = p_icall.argument_metadata[i];
 
 		if (p_icall.is_vararg) {
 			if (i < p_icall.get_arguments_count() - 1) {
@@ -3486,14 +3811,51 @@ Error BindingsGenerator::_generate_cs_native_calls(const InternalCall &p_icall, 
 			if (i > 0) {
 				c_args_var_content << ", ";
 			}
-			if (arg_type->c_in.size()) {
-				c_in_statements << sformat(arg_type->c_in, arg_type->c_type, c_param_name,
-						String(), String(), String(), INDENT2);
+			if (is_native_struct_arg) {
+				c_fixed_statements << INDENT2
+								   << "fixed ("
+								   << _get_cs_native_struct_type_name(*arg_type)
+								   << "* "
+								   << c_param_name
+								   // Do not take address of span, it already gives use a pinnable reference to work with.
+								   << (argument_metadata.pointer_metadata == ArgumentInterface::POINTER_METADATA_IS_POINTER ? "_ptr = &" : "_ptr = ")
+								   << c_param_name
+								   << ")\n";
+
+				c_args_var_content << c_param_name << "_ptr";
+			} else {
+				if (arg_type->c_in.size()) {
+					if (argument_metadata.is_buffer_capacity_argument) {
+						String c_last_param_name = "arg" + itos(i);
+						c_in_statements << INDENT2 << arg_type->c_type << " " << c_param_name << "_in" << " = " << c_last_param_name << ".Length;\n";
+					} else {
+						c_in_statements << sformat(arg_type->c_in, arg_type->c_type, c_param_name,
+								String(), String(), String(), INDENT2);
+					}
+				}
+				c_args_var_content << sformat(arg_type->c_arg_in, c_param_name);
 			}
-			c_args_var_content << sformat(arg_type->c_arg_in, c_param_name);
 		}
 
-		c_func_sig << ", " << arg_type->c_type_in << " " << c_param_name;
+		if (argument_metadata.is_buffer_capacity_argument) {
+			// internal argument derived from span, not added to arg list
+			i++;
+			continue;
+		}
+
+		c_func_sig << ", ";
+		if (is_native_struct_arg) {
+			String parameter_type = _get_cs_native_struct_type_name(*arg_type);
+			if (argument_metadata.pointer_metadata == ArgumentInterface::POINTER_METADATA_IS_POINTER_TO_BUFFER) {
+				c_func_sig << _render_span(argument_metadata.is_readonly, parameter_type);
+			} else {
+				c_func_sig << _get_cs_parameter_modifier(argument_metadata.modifier)
+						   << parameter_type;
+			}
+		} else {
+			c_func_sig << arg_type->c_type_in;
+		}
+		c_func_sig << " " << c_param_name;
 
 		i++;
 	}
@@ -3640,11 +4002,21 @@ Error BindingsGenerator::_generate_cs_native_calls(const InternalCall &p_icall, 
 			r_output << CLOSE_BLOCK_L2;
 		} else {
 			r_output << c_in_statements.as_string();
+			bool has_fixed_statements = c_fixed_statements.get_string_length() > 0;
+			const char *indent = has_fixed_statements ? INDENT3 : INDENT2;
+			if (has_fixed_statements) {
+				r_output << c_fixed_statements.as_string();
+				r_output << INDENT2 "{\n";
+			}
 
-			r_output << INDENT2 "void** " C_LOCAL_PTRCALL_ARGS " = stackalloc void*["
-					 << argc_str << "] { " << c_args_var_content.as_string() << " };\n";
+			r_output << indent << "void** " C_LOCAL_PTRCALL_ARGS " = stackalloc void*["
+						 << argc_str << "] { " << c_args_var_content.as_string() << " };\n";
 
-			generate_call_and_return_stmts(INDENT2);
+			generate_call_and_return_stmts(indent);
+
+			if (has_fixed_statements) {
+				r_output << INDENT2 "}\n";
+			}
 		}
 	} else {
 		generate_call_and_return_stmts(INDENT2);
@@ -3669,6 +4041,10 @@ const BindingsGenerator::TypeInterface *BindingsGenerator::_get_type_or_null(con
 
 	if (builtin_type_match) {
 		return &builtin_type_match->value;
+	}
+
+	if (const TypeInterface *ns = native_struct_types.getptr(p_typeref.cname)) {
+		return ns;
 	}
 
 	HashMap<StringName, TypeInterface>::ConstIterator obj_type_match = obj_types.find(p_typeref.cname);
@@ -3892,16 +4268,44 @@ bool BindingsGenerator::_arg_default_value_is_assignable_to_type(const Variant &
 	return false;
 }
 
-bool method_has_ptr_parameter(MethodInfo p_method_info) {
+// However, if they refer to a type in ClassDB::get_native_struct_list then it is.
+bool BindingsGenerator::_method_all_extension_ptr_parameters_and_return_is_supported(const MethodInfo &p_method_info) {
+	// Not supported right now.
 	if (p_method_info.return_val.type == Variant::INT && p_method_info.return_val.hint == PROPERTY_HINT_INT_IS_POINTER) {
-		return true;
+		return false;
 	}
-	for (PropertyInfo arg : p_method_info.arguments) {
+
+	for (const PropertyInfo &arg : p_method_info.arguments) {
 		if (arg.type == Variant::INT && arg.hint == PROPERTY_HINT_INT_IS_POINTER) {
-			return true;
-		}
+			String type;
+			bool is_const_ptr;
+			if (!_try_parse_gdextension_ptr_hint_string(arg.hint_string, type, is_const_ptr)) {
+				return false;
+			}
+
+			if (!native_struct_types.has(_normalize_native_type_name(type))) {
+				_log("Method '%s' has an argument with unsupported pointer type: '%s'.\n", String(p_method_info.name).utf8().get_data(), String(arg.hint_string).utf8().get_data());
+				return false;
+			}
+
+			if (p_method_info.flags & METHOD_FLAG_VIRTUAL) {
+				return false;// for now.
+			}
+ 		}
 	}
-	return false;
+	return true;
+}
+
+bool BindingsGenerator::_try_parse_gdextension_ptr_hint_string(const String &p_hint_string, String &r_type, bool &r_is_const_pointer) {
+	if (p_hint_string.begins_with("const ")) {
+		r_type = p_hint_string.substr(6).strip_edges();
+		r_is_const_pointer = true;
+	} else {
+		r_type = p_hint_string.strip_edges();
+		r_is_const_pointer = false;
+	}
+
+	return !r_type.is_empty();
 }
 
 struct SortMethodWithHashes {
@@ -3909,6 +4313,216 @@ struct SortMethodWithHashes {
 		return p_a.first < p_b.first;
 	}
 };
+
+bool BindingsGenerator::_populate_native_struct_type_interfaces() {
+	native_struct_types.clear();
+
+	List<StringName> structs;
+	ClassDB::get_native_struct_list(&structs);
+	for (const StringName &struct_classdb_name : structs) {
+		//ClassDB::APIType struct_api_type =  ClassDB::APIType::API_CORE; // ClassDB::get_api_type(struct_cname);
+
+		// TODO: NONE OF THE STRUCTS HAVE API TYPES?!?!?!?!?!??!
+		// This is a ClassDB issue.
+		// ERR_CONTINUE_MSG(struct_api_type == ClassDB::API_NONE, "Struct '" + String(struct_cname) + "' has invalid API type.");
+		if (ignored_types.has(struct_classdb_name)) {
+			_log("Ignoring struct '%s' because it's in the list of ignored types\n", String(struct_classdb_name).utf8().get_data());
+			continue;
+		}
+
+		// Just skip object id since C# uses ulong
+		if (struct_classdb_name == "ObjectID") {
+			continue;;
+		}
+
+		String struct_code = ClassDB::get_native_struct_code(struct_classdb_name);
+		String struct_canonical_path = _normalize_native_type_name(struct_classdb_name);
+		Vector<String> struct_containing_type_names_or_empty = {};
+
+		// Scope to correct type.
+		String struct_name;
+		if (struct_canonical_path.contains(".")) {
+			// Even though it is not happening right now, we will support multiple nesting.
+			Vector<String> parts = struct_canonical_path.split(".");
+			for (int i = 0; i < parts.size() - 1; i++) {
+				struct_containing_type_names_or_empty.push_back(parts[i]);
+			}
+			struct_name = parts[parts.size() - 1];
+		} else {
+			struct_name = struct_canonical_path;
+		}
+
+		TypeInterface struct_itype = TypeInterface::create_value_type(struct_canonical_path, pascal_to_pascal_case(struct_name)); // later pass in struct_api_type
+		struct_itype.type_name_path = struct_containing_type_names_or_empty;
+		struct_itype.cs_variant_to_managed = "ref VariantUtils.DangerouslyReinterpretAsRef<%1>(%0)";
+
+		Vector<FieldInterface> fields;
+		if (!_parse_native_struct(struct_code, struct_itype.name, fields)) {
+			_log("Struct '%s' either failed to parse or has unsupported members and will be ignored.\n", String(struct_classdb_name).utf8().get_data());
+			continue; // Don't add.
+		}
+		struct_itype.fields = fields;
+
+		_log("Parsed struct '%s' with members:\n", String(struct_itype.name).utf8().get_data());
+		for (const FieldInterface &field: struct_itype.fields) {
+			_log("  - %s %s\n", String(field.name).utf8().get_data(), String(field.type.cname).utf8().get_data());
+		}
+
+		native_struct_types.insert(struct_canonical_path, struct_itype);
+	}
+
+	return true;
+}
+
+bool BindingsGenerator::_parse_native_struct(const String &p_struct_code, const String &p_struct_name, Vector<FieldInterface> &r_fields) {
+	Vector<String> members = p_struct_code.split(";");
+	for (const String &member : members) {
+		if (member.strip_edges().is_empty()) {
+			continue; // just in case
+		}
+
+		FieldInterface field;
+		if (!_parse_native_struct_member(member, p_struct_name, field)) {
+			_log("Failed to parse member '%s' of struct '%s'.\n", member.utf8().get_data(), p_struct_name.utf8().get_data());
+			return false;
+		}
+		r_fields.push_back(field);
+	}
+
+	return true;
+}
+
+bool BindingsGenerator::_parse_native_struct_member(const String &p_member, const String &p_struct_name, FieldInterface &r_field) {
+	// Trivial structs only supported for now...
+	// Note: Right now the only unsupported type present is StringName which is being used in "ScriptLanguageExtensionProfilingInfo"
+	// But I also added others for future proofing.
+	static HashSet<String> unsupported_non_trivial_member_types = {
+		"Variant",
+		"StringName",
+		"String",
+		"NodePath",
+		"Callable",
+		"Signal",
+		"Dictionary",
+		"Array"
+	};
+
+	Vector<String> default_parts = p_member.strip_edges().split("=", false);
+
+	ERR_FAIL_COND_V_MSG(
+			default_parts.size() > 2,
+			false,
+			"Invalid struct member declaration: '" + p_member + "' in struct '" + p_struct_name + "'.");
+
+	String type_and_name = default_parts[0].strip_edges();
+	r_field.default_value = default_parts.size() == 2 ? default_parts[1].strip_edges() : String();
+
+	Vector<String> parts = type_and_name.split(" ", false);
+
+	ERR_FAIL_COND_V_MSG(
+			parts.size() != 2,
+			false,
+			"Invalid struct member declaration: '" + p_member + "' in struct '" + p_struct_name + "'. Expected format: '<type> <name>'.");
+
+	String member_type = parts[0].strip_edges();
+	String member_name = parts[1].strip_edges();
+
+	// Pointer.
+	if (member_name.begins_with("*")) {
+		member_name = member_name.substr(1);
+		member_type += "*";
+	}
+
+	int fixed_array_size = 0;
+	bool err = _extract_fixed_array_info(member_name, fixed_array_size);
+	ERR_FAIL_COND_V_MSG(!err, false, "Failed to parse fixed array info for member '" + member_name + "' in struct '" + p_struct_name + "'.");
+
+	if (unsupported_non_trivial_member_types.has(member_type)) {
+		return false;
+	}
+
+	r_field.name = member_name;
+	r_field.name = snake_to_pascal_case(member_name);
+	r_field.type = TypeReference(_normalize_native_type_name(member_type));
+	r_field.fixed_array_size = fixed_array_size;
+
+	return true;
+}
+
+bool BindingsGenerator::_extract_fixed_array_info(String &r_member_name, int &r_array_size) {
+	int bracket_open = r_member_name.find("[");
+	if (bracket_open < 0) {
+		r_array_size = 0;
+		return true;
+	}
+
+	int bracket_close = r_member_name.find("]", bracket_open);
+	ERR_FAIL_COND_V_MSG(bracket_close < 0, false, "Malformed fixed array field: " + r_member_name);
+
+	String size_text = r_member_name.substr(bracket_open + 1, bracket_close - bracket_open - 1).strip_edges();
+	ERR_FAIL_COND_V_MSG(!size_text.is_valid_int(), false, "Unsupported fixed array size: " + size_text);
+
+	r_array_size = size_text.to_int();
+	ERR_FAIL_COND_V_MSG(r_array_size <= 0, false, "Invalid fixed array size: " + size_text);
+
+	r_member_name = r_member_name.substr(0, bracket_open).strip_edges();
+	return true;
+}
+
+String BindingsGenerator::_normalize_native_type_name(const String &p_type) {
+	static const AHashMap<String, String> native_type_aliases = {
+		// Unsigned integers
+		{ "uint8_t", "byte" },
+		{ "uint16_t", "ushort" },
+		{ "uint32_t", "uint" },
+		{ "uint64_t", "ulong" },
+
+		// Signed integers
+		{ "int16_t", "short" },
+		{ "int32_t", "int" },
+		{ "int8_t", "sbyte" },
+		{ "int64_t", "long" },
+
+		{ "void*", "IntPtr" },
+		{ "Object*", "IntPtr" },
+
+		{"ObjectID", "ulong"},
+
+		// Some of the original names where created for extensions only, but it looks out of place.
+		// Instead, put them on a specific C# type, for ergonomics.
+
+		// 3D Physics
+		{ "PhysicsServer3DExtensionRayResult", "PhysicsDirectSpaceState3D.RayResult" },
+		{ "PhysicsServer3DExtensionShapeResult", "PhysicsDirectSpaceState3D.ShapeResult" },
+		{ "PhysicsServer3DExtensionShapeRestInfo", "PhysicsDirectSpaceState3D.ShapeRestInfo" },
+		{ "PhysicsServer3DExtensionMotionCollision", "PhysicsServer3D.MotionCollision" },
+		{ "PhysicsServer3DExtensionMotionResult", "PhysicsServer3D.MotionResult" },
+
+		// Uncomment when 2d physics is implemented
+		/*{ "PhysicsServer2DExtensionRayResult", "PhysicsDirectSpaceState2D.RayResult" },
+		{ "PhysicsServer2DExtensionShapeResult", "PhysicsDirectSpaceState2D.ShapeResult" },
+		{ "PhysicsServer2DExtensionShapeRestInfo", "PhysicsDirectSpaceState2D.ShapeRestInfo" },
+		{ "PhysicsServer2DExtensionMotionResult", "PhysicsServer2D.MotionResult" },*/
+
+		// Text server.
+		{ "Glyph", "TextServer.Glyph" },
+		{ "CaretInfo", "TextServer.CaretInfo" }
+	};
+
+	/*if (const TypeInterface *built_in = builtin_types.getptr(p_type); built_in) {
+		return built_in->proxy_name;
+	}*/
+
+	if (const String *mapped = native_type_aliases.getptr(p_type)) {
+		return *mapped;
+	}
+	// Eg, TextServer::Direction -> TextServer.Direction
+	if (p_type.contains("::")) {
+		return p_type.replace("::", ".");
+	}
+
+	return p_type;
+}
 
 bool BindingsGenerator::_populate_object_type_interfaces() {
 	obj_types.clear();
@@ -4074,8 +4688,9 @@ bool BindingsGenerator::_populate_object_type_interfaces() {
 				continue;
 			}
 
-			if (method_has_ptr_parameter(method_info)) {
-				// Pointers are not supported.
+			if (!_method_all_extension_ptr_parameters_and_return_is_supported(method_info)) {
+				_log("Ignoring method '%s' of type '%s' because it has unsupported pointer parameters or return type.\n",
+						String(method_info.name).utf8().get_data(), String(itype.name).utf8().get_data());
 				itype.ignored_members.insert(method_info.name);
 				continue;
 			}
@@ -4084,6 +4699,7 @@ bool BindingsGenerator::_populate_object_type_interfaces() {
 			imethod.name = method_info.name;
 			imethod.cname = cname;
 			imethod.hash = hash;
+			//_log("Processing method '%s' of type '%s'.\n", String(imethod.name).utf8().get_data(), String(itype.name).utf8().get_data());
 
 			if (method_info.flags & METHOD_FLAG_STATIC) {
 				imethod.is_static = true;
@@ -4167,10 +4783,36 @@ bool BindingsGenerator::_populate_object_type_interfaces() {
 
 				ArgumentInterface iarg;
 				iarg.name = orig_arg_name;
+				iarg.cname = orig_arg_name; // don't change this.
 
 				if (arginfo.type == Variant::INT && arginfo.usage & (PROPERTY_USAGE_CLASS_IS_ENUM | PROPERTY_USAGE_CLASS_IS_BITFIELD)) {
 					iarg.type.cname = arginfo.class_name;
 					iarg.type.is_enum = true;
+				} else if (arginfo.type == Variant::INT && arginfo.hint == PROPERTY_HINT_INT_IS_POINTER && !arginfo.hint_string.is_empty()) {
+					String type;
+					bool is_const_ptr;
+					// This should not fail, we checked earlier.
+					if (!_try_parse_gdextension_ptr_hint_string(arginfo.hint_string, type, is_const_ptr)) {
+						CRASH_NOW_MSG("Invalid hint string for pointer argument: '" + arginfo.hint_string + "'. Argument: '" + itype.name + "." + imethod.name + "." + orig_arg_name + "'.");
+					}
+
+					iarg.is_readonly = is_const_ptr;
+					if (iarg.is_readonly) {
+						iarg.param_modifier = ArgumentInterface::REF_READONLY;
+					} else {
+						// check if it starts with an "r_" (that is usually out in this codebase)
+						static constexpr const char *OUT_PREFIX = "r_";
+						if (orig_arg_name.begins_with(OUT_PREFIX)) {
+							iarg.name = orig_arg_name.substr(String(OUT_PREFIX).length());
+							// If this happens to be a buffer, this will be set to none later
+							iarg.param_modifier = ArgumentInterface::OUT;
+						} else {
+							iarg.param_modifier = ArgumentInterface::REF;
+						}
+					}
+
+					iarg.type.cname =  _normalize_native_type_name(type);
+					iarg.pointer_metadata = ArgumentInterface::POINTER_METADATA_IS_POINTER; // will be changed later
 				} else if (arginfo.class_name != StringName()) {
 					iarg.type.cname = arginfo.class_name;
 				} else if (arginfo.type == Variant::ARRAY && arginfo.hint == PROPERTY_HINT_ARRAY_TYPE) {
@@ -4207,6 +4849,7 @@ bool BindingsGenerator::_populate_object_type_interfaces() {
 				imethod.add_argument(ivararg);
 			}
 
+			_apply_native_pointer_metadata(imethod); // This will fix some of the args.
 			imethod.proxy_name = escape_csharp_keyword(snake_to_pascal_case(imethod.name));
 
 			// Prevent the method and its enclosing type from sharing the same name
@@ -4606,6 +5249,49 @@ static String _real_to_cs_declaration(const real_t p_num, const bool p_trailing 
 #else
 	return _float_to_cs_declaration(p_num, p_trailing);
 #endif
+}
+
+void BindingsGenerator::_apply_native_pointer_metadata(MethodInterface &r_imethod) {
+	for (List<ArgumentInterface>::Element *E = r_imethod.arguments.front(); E; E = E->next()) {
+		ArgumentInterface &current_parameter = E->get();
+
+		if (current_parameter.pointer_metadata == ArgumentInterface::POINTER_METADATA_NOT_A_POINTER) {
+			continue;
+		}
+
+		List<ArgumentInterface>::Element *n = E->next();
+		if (!n) {
+			continue;
+		}
+
+		ArgumentInterface &next_parameter = n->get();
+		if (next_parameter.type.cname != name_cache.type_int) {
+			continue;
+		}
+
+		static constexpr const char *BUFFER_SUFFIX = "_buffer";
+		if (!current_parameter.cname.ends_with(BUFFER_SUFFIX)) {
+			continue;
+		}
+
+		String expected_capacity_arg_cname = current_parameter.cname + "_capacity";
+		if (next_parameter.cname != expected_capacity_arg_cname)
+			continue;
+
+		// Example:
+		// If current_parameter.cname is "intersected_shapes_buffer"
+		// Then next_parameter.cname is "intersected_shapes_buffer_capacity"
+
+		// We will assume based on this naming convention, that the current parameter is the pointer to the buffer.
+		current_parameter.pointer_metadata = ArgumentInterface::POINTER_METADATA_IS_POINTER_TO_BUFFER;
+		current_parameter.param_modifier = ArgumentInterface::NONE;
+		// "intersectedShapesBuffer" -> "intersectedShapes"
+		current_parameter.name = current_parameter.name.trim_suffix("Buffer");
+
+		// And the next parameter is the buffer capacity.
+		// No need to change name, since it will be hidden.
+		next_parameter.is_buffer_capacity_argument = true;
+	}
 }
 
 static String _get_vector2_cs_ctor_args(const Vector2 &p_vec2) {
@@ -5348,6 +6034,7 @@ void BindingsGenerator::_initialize_blacklisted_methods() {
 	blacklisted_methods["Object"].push_back("to_string"); // there is already ToString
 	blacklisted_methods["Object"].push_back("_to_string"); // override ToString instead
 	blacklisted_methods["Object"].push_back("_init"); // never called in C# (TODO: implement it)
+	blacklisted_methods["GDExtensionManager"].push_back("load_extension_from_function"); // This isn't even a struct, it is an unmanaged function pointer.
 }
 
 void BindingsGenerator::_initialize_compat_singletons() {
@@ -5374,6 +6061,11 @@ void BindingsGenerator::_initialize() {
 	_initialize_blacklisted_methods();
 
 	_initialize_compat_singletons();
+
+	_populate_builtin_type_interfaces();
+
+	bool native_struct_types_ok = _populate_native_struct_type_interfaces();
+	ERR_FAIL_COND_MSG(!native_struct_types_ok, "Failed to generate native struct type interfaces");
 
 	bool obj_type_ok = _populate_object_type_interfaces();
 	ERR_FAIL_COND_MSG(!obj_type_ok, "Failed to generate object type interfaces");
