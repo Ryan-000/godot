@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using Godot.NativeInterop;
 
 #nullable enable
@@ -127,6 +128,7 @@ namespace Godot
             return NativeValue.DangerousSelfRef == other.NativeValue.DangerousSelfRef;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool operator ==(StringName? left, in godot_string_name right)
         {
             if (left is null)
@@ -134,21 +136,27 @@ namespace Godot
             return left.Equals(right);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool operator !=(StringName? left, in godot_string_name right)
         {
             return !(left == right);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool operator ==(in godot_string_name left, StringName? right)
         {
-            return right == left;
+            if (right is null)
+                return left.IsEmpty;
+            return right.NativeValue.NativePtr == left.NativePtr;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool operator !=(in godot_string_name left, StringName? right)
         {
             return !(right == left);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool Equals(in godot_string_name other)
         {
             return NativeValue.DangerousSelfRef == other;

@@ -551,6 +551,12 @@ namespace Godot.NativeInterop
 
         private IntPtr _data;
 
+        internal readonly IntPtr NativePtr
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => _data;
+        }
+
         public void Dispose()
         {
             if (_data == IntPtr.Zero)
@@ -572,6 +578,7 @@ namespace Godot.NativeInterop
             get => _data == IntPtr.Zero;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool operator ==(godot_string_name left, godot_string_name right)
         {
             return left._data == right._data;
@@ -604,14 +611,22 @@ namespace Godot.NativeInterop
         {
             private IntPtr _data;
 
+            internal readonly IntPtr NativePtr
+            {
+            	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+            	get => _data;
+            }
+
             public static unsafe explicit operator movable(in godot_string_name value)
                 => *(movable*)CustomUnsafe.AsPointer(ref CustomUnsafe.AsRef(value));
 
             public static unsafe explicit operator godot_string_name(movable value)
                 => *(godot_string_name*)Unsafe.AsPointer(ref value);
 
-            public unsafe ref godot_string_name DangerousSelfRef =>
-                ref CustomUnsafe.AsRef((godot_string_name*)Unsafe.AsPointer(ref this));
+            public unsafe ref godot_string_name DangerousSelfRef {
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                get => ref CustomUnsafe.AsRef((godot_string_name*)Unsafe.AsPointer(ref this));
+            }
         }
     }
 
