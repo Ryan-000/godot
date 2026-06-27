@@ -5262,6 +5262,109 @@ void BindingsGenerator::_apply_native_pointer_metadata(MethodInterface &r_imetho
 	}
 }
 
+bool BindingsGenerator::_type_can_reference_other_type(const TypeInterface &p_owner, const TypeReference &p_other_type_ref, const String &context, String &r_error_message) {
+	const TypeInterface *other_type = obj_types.getptr(p_other_type_ref.cname);
+	if (!other_type) {
+		return true; // Unknown types are always allowed (e.g. String, bool, void, etc).
+	}
+
+	if (_api_type_can_reference_other(p_owner.api_type, other_type->api_type)) {
+		return true;
+	}
+
+	r_error_message = String(api_type_names[p_owner.api_type]) + " Type '" + p_owner.name + "' " +
+			"cannot reference " + api_type_names[other_type->api_type] + " Type '" + other_type->name + "' " +
+			"in " + context + ".";
+
+	return false;
+}
+
+bool BindingsGenerator::_validate_object_type_interfaces() {
+	HashMap<const TypeInterface *, LocalVector<String>> types_with_errors;
+
+#define VALIDATE_TYPE_REF(other_type_ref, context)                                                              \
+	if (String error_message; !_type_can_reference_other_type(itype, other_type_ref, context, error_message)) { \
+		LocalVector<String> *errors = &types_with_errors[&itype];                                               \
+		errors->push_back(error_message);                                                                       \
+	}
+
+	// Make sure that types only reference other types they are allowed to reference
+	for (const KeyValue<StringName, TypeInterface> &E : obj_types) {
+		const TypeInterface &itype = E.value;
+
+		ERR_CONTINUE_MSG(itype.api_type == ClassDB::API_NONE, "Type '" + itype.name + "' has invalid API type.");
+
+		for (const MethodInterface &imethod : itype.methods) {
+			for (const ArgumentInterface &iarg : imethod.arguments) {
+				VALIDATE_TYPE_REF(iarg.type, "method argument of '" + imethod.name + "'");
+			}
+
+			VALIDATE_TYPE_REF(imethod.return_type, "method return type of '" + imethod.name + "'");
+		}
+
+		for (const SignalInterface &isignal : itype.signals_) {
+			for (const ArgumentInterface &iarg : isignal.arguments) {
+				VALIDATE_TYPE_REF(iarg.type, "signal argument of '" + isignal.name + "'");
+			}
+		}
+
+		for (const PropertyInterface &iprop : itype.properties) {
+			if (const MethodInterface *getter = itype.find_method_by_name(iprop.getter)) {
+				VALIDATE_TYPE_REF(getter->return_type, "property getter of '" + iprop.cname + "'");
+			}
+
+			if (const MethodInterface *setter = itype.find_method_by_name(iprop.setter); setter && setter->arguments.size() > 0) {
+				VALIDATE_TYPE_REF(setter->arguments.get(0).type, "property setter of '" + iprop.cname + "'");
+			}
+		}
+	}
+
+	// Report errors
+	for (const KeyValue<const TypeInterface *, LocalVector<String>> &E : types_with_errors) {
+		String full_error_message = "Type '" + E.key->name + "' has invalid references:\n";
+		for (const String &error_message : E.value) {
+			full_error_message += "  - " + error_message + "\n";
+		}
+
+		ERR_PRINT(full_error_message);
+	}
+
+	return types_with_errors.size() == 0;
+}
+
+static String _to_cs_num(const String &p_base_type, const String &p_num_string, const String &p_suffix) {
+	if (p_num_string == "inf") {
+		return p_base_type + ".PositiveInfinity";
+	}
+	if (p_num_string == "-inf") {
+		return p_base_type + ".NegativeInfinity";
+	}
+	if (p_num_string == "nan") {
+		return p_base_type + ".NaN";
+	}
+	return p_num_string + p_suffix;
+}
+
+static String _float_to_cs_declaration(const float p_num, const bool p_trailing = true) {
+	const String num_string = String::num_real(p_num, p_trailing);
+	return _to_cs_num("float", num_string, "f");
+}
+
+#if REAL_T_IS_DOUBLE // Needed to avoid -Wunused-function.
+static String _double_to_cs_declaration(const double p_num, const bool p_trailing = true) {
+	const String num_string = String::num_real(p_num, p_trailing);
+	return _to_cs_num("double", num_string, "d");
+}
+#endif
+
+static String _real_to_cs_declaration(const real_t p_num, const bool p_trailing = true) {
+#if REAL_T_IS_DOUBLE
+	return _double_to_cs_declaration(p_num, p_trailing);
+#else
+	return _float_to_cs_declaration(p_num, p_trailing);
+#endif
+}
+
 static String _get_vector2_cs_ctor_args(const Vector2 &p_vec2) {
 	return _real_to_cs_declaration(p_vec2.x) + ", " +
 			_real_to_cs_declaration(p_vec2.y);
