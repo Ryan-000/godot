@@ -120,6 +120,26 @@ class BindingsGenerator {
 				cname(p_cname) {}
 	};
 
+	struct FieldInterface {
+		StringName cname;
+		StringName name;
+		TypeReference type;
+		// String type;
+		String default_value = String();
+
+		// 0 means normal!
+		int fixed_array_size = 0;
+
+		bool is_inline_array() const {
+			return fixed_array_size > 0;
+		}
+
+		const DocData::PropertyDoc *field_doc;
+
+		bool is_deprecated = false;
+		String deprecation_message;
+	};
+
 	struct ArgumentInterface {
 		enum DefaultParamMode {
 			CONSTANT,
@@ -127,12 +147,33 @@ class BindingsGenerator {
 			NULLABLE_REF
 		};
 
+		enum ParameterModifier {
+			NONE, // normal
+			REF,
+			REF_READONLY,
+			OUT
+		};
+
+		enum PointerMetadata {
+			POINTER_METADATA_NOT_A_POINTER,
+			POINTER_METADATA_IS_POINTER, // e.g. ref, ref readonly, out.
+			// This parameter is a pointer (and the next parameter is its length).
+			// Used to create Span<> (or ReadOnlySpan<> if REF_READONLY)
+			POINTER_METADATA_IS_POINTER_TO_BUFFER,
+		};
+
 		TypeReference type;
 
 		String name;
+		String cname;
 
 		Variant def_param_value;
 		DefaultParamMode def_param_mode = CONSTANT;
+		ParameterModifier param_modifier = NONE;
+
+		PointerMetadata pointer_metadata = POINTER_METADATA_NOT_A_POINTER;
+		bool is_buffer_capacity_argument = false;
+		bool is_readonly = false; // set to true, if its a GDExtensionConstPtr
 
 		/**
 		 * Determines the expression for the parameter default value.
@@ -263,6 +304,13 @@ class BindingsGenerator {
 		 * Name of the C# class
 		 */
 		String proxy_name;
+
+		/**
+		 * Parent types to add this type under.
+		 * Currently only used for native structs.
+		 * Is empty when the type is global.
+		 */
+		Vector<String> type_name_path;
 
 		ClassDB::APIType api_type = ClassDB::API_NONE;
 
@@ -462,6 +510,7 @@ class BindingsGenerator {
 		List<ConstantInterface> constants;
 		List<EnumInterface> enums;
 		List<PropertyInterface> properties;
+		Vector<FieldInterface> fields;
 		List<MethodInterface> methods;
 		List<SignalInterface> signals_;
 		HashSet<String> ignored_members;
@@ -636,7 +685,16 @@ class BindingsGenerator {
 		bool is_vararg = false;
 		bool is_static = false;
 		TypeReference return_type;
-		List<TypeReference> argument_types;
+		Vector<TypeReference> argument_types;
+
+		struct ArgumentMetadata {
+			ArgumentInterface::ParameterModifier modifier;
+			ArgumentInterface::PointerMetadata pointer_metadata;
+			bool is_buffer_capacity_argument;
+			bool is_readonly;
+		};
+
+		Vector<ArgumentMetadata> argument_metadata;
 
 		_FORCE_INLINE_ int get_arguments_count() const { return argument_types.size(); }
 
@@ -657,6 +715,9 @@ class BindingsGenerator {
 	bool initialized = false;
 
 	HashMap<StringName, TypeInterface> obj_types;
+	// These are types that are registered with the GDREGISTER_NATIVE_STRUCT macro
+	// They should be trivial types.
+	HashMap<StringName, TypeInterface> native_struct_types;
 
 	HashMap<StringName, TypeInterface> builtin_types;
 	HashMap<StringName, TypeInterface> enum_types;
@@ -840,7 +901,20 @@ class BindingsGenerator {
 	bool _arg_default_value_from_variant(const Variant &p_val, ArgumentInterface &r_iarg);
 	bool _arg_default_value_is_assignable_to_type(const Variant &p_val, const TypeInterface &p_arg_type);
 
+	bool _populate_native_struct_type_interfaces();
+	bool _parse_native_struct(
+			const String &p_struct_code,
+			const String &p_struct_name,
+			Vector<FieldInterface> &r_fields);
+	bool _parse_native_struct_member(const String &p_member, const String &p_struct_name, FieldInterface &r_field);
+	static bool _extract_fixed_array_info(String &r_member_name, int &r_array_size);
+	String _normalize_native_type_name(const String &p_type);
+
 	bool _populate_object_type_interfaces();
+	void _apply_native_pointer_metadata(MethodInterface &r_imethod);
+	bool _method_all_extension_ptr_parameters_and_return_is_supported(const MethodInfo &p_method_info);
+	bool _try_parse_gdextension_ptr_hint_string(const String &p_hint_string, String &r_type, bool &r_is_const_pointer);
+
 	void _populate_builtin_type_interfaces();
 	bool _type_can_reference_other_type(const TypeInterface &p_owner, const TypeReference &p_other_type_ref, const String &context, String &r_error_message);
 	bool _validate_object_type_interfaces();
@@ -853,7 +927,29 @@ class BindingsGenerator {
 	Error _generate_cs_type(const TypeInterface &itype, const String &p_output_file);
 
 	Error _generate_cs_property(const TypeInterface &p_itype, const PropertyInterface &p_iprop, StringBuilder &p_output);
+
+	class CodeWriter;
+	Error _generate_cs_native_struct_type(const TypeInterface &itype, const String &p_output_file);
+
+	Error _generate_cs_field(
+			const TypeInterface &p_itype,
+			const FieldInterface &p_ifield,
+			CodeWriter &p_writer);
+
+	Error _generate_cs_inline_array_buffer(
+			const FieldInterface &p_ifield,
+			CodeWriter &p_writer);
+
+	String _get_cs_native_struct_type_name(const TypeInterface &p_native_struct_itype) const;
+	String _get_cs_native_struct_field_type(const TypeReference &p_type);
+	String _get_inline_array_constant_name(const FieldInterface &p_field) const;
+
 	Error _generate_cs_method(const TypeInterface &p_itype, const MethodInterface &p_imethod, int &p_method_bind_count, StringBuilder &p_output, bool p_use_span);
+
+	static String _render_span(bool p_is_readonly, const String &p_element_type);
+
+	String _get_cs_parameter_modifier(ArgumentInterface::ParameterModifier p_modifier) const;
+
 	Error _generate_cs_signal(const BindingsGenerator::TypeInterface &p_itype, const BindingsGenerator::SignalInterface &p_isignal, StringBuilder &p_output);
 
 	Error _generate_cs_native_calls(const InternalCall &p_icall, StringBuilder &r_output);

@@ -485,13 +485,81 @@ Dictionary PhysicsDirectSpaceState3D::_get_rest_info(RequiredParam<PhysicsShapeQ
 PhysicsDirectSpaceState3D::PhysicsDirectSpaceState3D() {
 }
 
+#define ERR_FAIL_EMPTY_BUFFER_V(p_capacity, p_return_value) \
+	ERR_FAIL_COND_V_MSG( \
+			(p_capacity) <= 0, \
+			(p_return_value), \
+			"Buffer capacity must be greater than 0. Calling this method with an empty output buffer cannot produce results and only adds unnecessary overhead.")
+
+bool PhysicsDirectSpaceState3D::_intersect_ray_native(RequiredParam<PhysicsRayQueryParameters3D> rp_ray_query, GDExtensionPtr<RayResult> r_ray_result) {
+	EXTRACT_PARAM_OR_FAIL_V(p_ray_query, rp_ray_query, false);
+	ERR_FAIL_NULL_V(r_ray_result.data, false);
+	return intersect_ray(p_ray_query->get_parameters(), *r_ray_result);
+}
+
+int PhysicsDirectSpaceState3D::_intersect_point_native(RequiredParam<PhysicsPointQueryParameters3D> rp_point_query, GDExtensionPtr<ShapeResult> r_intersected_shapes, int p_intersected_shapes_max) {
+	EXTRACT_PARAM_OR_FAIL_V(p_point_query, rp_point_query, 0);
+	ERR_FAIL_EMPTY_BUFFER_V(p_intersected_shapes_max, 0);
+	ERR_FAIL_NULL_V(r_intersected_shapes.data, 0);
+	return intersect_point(p_point_query->get_parameters(), r_intersected_shapes, p_intersected_shapes_max);
+}
+
+int PhysicsDirectSpaceState3D::_intersect_shape_native(RequiredParam<PhysicsShapeQueryParameters3D> rp_shape_query, GDExtensionPtr<ShapeResult> r_intersected_shapes, int p_intersected_shapes_max) {
+	EXTRACT_PARAM_OR_FAIL_V(p_shape_query, rp_shape_query, 0);
+	ERR_FAIL_EMPTY_BUFFER_V(p_intersected_shapes_max, 0);
+	ERR_FAIL_NULL_V(r_intersected_shapes.data, 0);
+	return intersect_shape(p_shape_query->get_parameters(), r_intersected_shapes, p_intersected_shapes_max);
+}
+
+bool PhysicsDirectSpaceState3D::_cast_motion_native(RequiredParam<PhysicsShapeQueryParameters3D> rp_shape_query, GDExtensionPtr<CastMotionResult> r_cast_motion_result) {
+	EXTRACT_PARAM_OR_FAIL_V(p_shape_query, rp_shape_query, false);
+	ERR_FAIL_NULL_V(r_cast_motion_result.data, false);
+	return cast_motion(p_shape_query->get_parameters(), (*r_cast_motion_result).closest_safe, (*r_cast_motion_result).closest_unsafe);
+}
+
+int PhysicsDirectSpaceState3D::_collide_shape_native(RequiredParam<PhysicsShapeQueryParameters3D> rp_shape_query, GDExtensionPtr<ShapeContactPair> r_shape_contact_pairs, int p_shape_contact_pairs_max) {
+	EXTRACT_PARAM_OR_FAIL_V(p_shape_query, rp_shape_query, 0);
+	ERR_FAIL_EMPTY_BUFFER_V(p_shape_contact_pairs_max, 0);
+	ERR_FAIL_NULL_V(r_shape_contact_pairs.data, 0);
+
+	int contact_count = 0;
+	if (!collide_shape(p_shape_query->get_parameters(), reinterpret_cast<Vector3 *>(r_shape_contact_pairs.data), p_shape_contact_pairs_max, contact_count)) {
+		return 0;
+	}
+	return contact_count;
+}
+
+bool PhysicsDirectSpaceState3D::_get_rest_info_native(RequiredParam<PhysicsShapeQueryParameters3D> rp_shape_query, GDExtensionPtr<ShapeRestInfo> r_rest_info) {
+	EXTRACT_PARAM_OR_FAIL_V(p_shape_query, rp_shape_query, false);
+	ERR_FAIL_NULL_V(r_rest_info.data, false);
+	return rest_info(p_shape_query->get_parameters(), r_rest_info);
+}
+
+#undef ERR_FAIL_EMPTY_BUFFER_V
+
 void PhysicsDirectSpaceState3D::_bind_methods() {
+	GDREGISTER_NATIVE_STRUCT(PhysicsDirectSpaceState3D::RayResult, PhysicsDirectSpaceState3D::RayResult::NATIVE_CODE);
+	GDREGISTER_NATIVE_STRUCT(PhysicsDirectSpaceState3D::ShapeResult, PhysicsDirectSpaceState3D::ShapeResult::NATIVE_CODE);
+	GDREGISTER_NATIVE_STRUCT(PhysicsDirectSpaceState3D::ShapeRestInfo, PhysicsDirectSpaceState3D::ShapeRestInfo::NATIVE_CODE);
+	GDREGISTER_NATIVE_STRUCT(PhysicsDirectSpaceState3D::CastMotionResult, PhysicsDirectSpaceState3D::CastMotionResult::NATIVE_CODE);
+	GDREGISTER_NATIVE_STRUCT(PhysicsDirectSpaceState3D::ShapeContactPair, PhysicsDirectSpaceState3D::ShapeContactPair::NATIVE_CODE);
+
 	ClassDB::bind_method(D_METHOD("intersect_point", "parameters", "max_results"), &PhysicsDirectSpaceState3D::_intersect_point, DEFVAL(32));
 	ClassDB::bind_method(D_METHOD("intersect_ray", "parameters"), &PhysicsDirectSpaceState3D::_intersect_ray);
 	ClassDB::bind_method(D_METHOD("intersect_shape", "parameters", "max_results"), &PhysicsDirectSpaceState3D::_intersect_shape, DEFVAL(32));
 	ClassDB::bind_method(D_METHOD("cast_motion", "parameters"), &PhysicsDirectSpaceState3D::_cast_motion);
 	ClassDB::bind_method(D_METHOD("collide_shape", "parameters", "max_results"), &PhysicsDirectSpaceState3D::_collide_shape, DEFVAL(32));
 	ClassDB::bind_method(D_METHOD("get_rest_info", "parameters"), &PhysicsDirectSpaceState3D::_get_rest_info);
+
+	// Having "r_" means it is an out parameter.
+	// Having "_buffer" and "_buffer_capacity" will turn it to a Span<> or ReadOnlySpan<> depending on if the buffer is const.
+	// If you know a better way to embed this metadata please let me know
+	ClassDB::bind_method(D_METHOD("intersect_ray_native", "ray_query", "r_ray_result"), &PhysicsDirectSpaceState3D::_intersect_ray_native);
+	ClassDB::bind_method(D_METHOD("intersect_point_native", "point_query", "intersected_shapes_buffer", "intersected_shapes_buffer_capacity"), &PhysicsDirectSpaceState3D::_intersect_point_native);
+	ClassDB::bind_method(D_METHOD("intersect_shape_native", "shape_query", "intersected_shapes_buffer", "intersected_shapes_buffer_capacity"), &PhysicsDirectSpaceState3D::_intersect_shape_native);
+	ClassDB::bind_method(D_METHOD("cast_motion_native", "shape_query", "r_cast_motion_result"), &PhysicsDirectSpaceState3D::_cast_motion_native);
+	ClassDB::bind_method(D_METHOD("collide_shape_native", "shape_query", "shape_contact_pairs_buffer", "shape_contact_pairs_buffer_capacity"), &PhysicsDirectSpaceState3D::_collide_shape_native);
+	ClassDB::bind_method(D_METHOD("get_rest_info_native", "shape_query", "r_rest_info"), &PhysicsDirectSpaceState3D::_get_rest_info_native);
 }
 
 ///////////////////////////////
