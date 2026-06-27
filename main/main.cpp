@@ -5074,7 +5074,8 @@ bool Main::iteration() {
 
 	GodotProfileZoneGrouped(_profile_zone, "RenderingServer::draw");
 	const bool has_pending_resources_for_processing = RD::get_singleton() && RD::get_singleton()->has_pending_resources_for_processing();
-	bool wants_present = (DisplayServer::get_singleton()->can_any_window_draw() ||
+	bool main_window_can_draw = DisplayServer::get_singleton()->window_can_draw();
+	bool wants_present = ((main_window_can_draw || DisplayServer::get_singleton()->can_any_window_draw()) ||
 								 DisplayServer::get_singleton()->has_additional_outputs()) &&
 			RenderingServer::get_singleton()->is_render_loop_enabled();
 
@@ -5171,7 +5172,7 @@ bool Main::iteration() {
 	bool wake_for_events = scene_tree && scene_tree->is_accessibility_enabled();
 
 	GodotProfileZoneGrouped(_profile_zone, "OS::add_frame_delay");
-	OS::get_singleton()->add_frame_delay(DisplayServer::get_singleton()->window_can_draw(), wake_for_events);
+	OS::get_singleton()->add_frame_delay(main_window_can_draw, wake_for_events);
 
 #ifdef TOOLS_ENABLED
 	if (auto_build_solutions) {
