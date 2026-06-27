@@ -393,9 +393,44 @@ String CSharpLanguage::validate_path(const String &p_path) const {
 	if (get_reserved_words().has(class_name)) {
 		return RTR("Class name can't be a reserved keyword");
 	}
-	if (!TS->is_valid_identifier(class_name)) {
-		return RTR("Class name must be a valid identifier");
+
+	// allow if it contians only 1 dot.
+
+	if (class_name.count(".") == 1) {
+		Vector<String> parts = class_name.split(".");
+		// make sure both are valid.
+		if (parts.size() != 2 || !TS->is_valid_identifier(parts[0]) || !TS->is_valid_identifier(parts[1])) {
+			return RTR("Class name must be a valid identifier");
+		}
+		// second one, limited.
+		static const Vector<String> allowed_suffixes = {
+			"Authoring",
+			"Presentation",
+			"Public",
+			"Simulation"
+		};
+		for (const String &allowed_suffix : allowed_suffixes) {
+			if (parts[1].ends_with(allowed_suffix)) {
+				return "";
+			}
+		}
+		return RTR("Class name must be a valid identifier, or end with one of the following suffixes: " + String(", ").join(allowed_suffixes));
+	} else {
+		if (!TS->is_valid_identifier(class_name)) {
+			return RTR("Class name must be a valid identifier");
+		}
 	}
+
+	if (!TS->is_valid_identifier(class_name)) {
+		if (class_name.count(".") == 1) {
+			Vector<String> parts = class_name.split(".");
+			if (parts.size() != 2 || !TS->is_valid_identifier(parts[0]) || !TS->is_valid_identifier(parts[1])) {
+				return RTR("Class name must be a valid identifier");
+		} else {
+			return RTR("Class name must be a valid identifier");
+		}
+	}
+}
 
 	return "";
 }
