@@ -112,6 +112,20 @@ if env["builtin_embree"]:
             ]
         )
 
+        # Godot's bundled Embree source list only builds the baseline/SSE path.
+        # If global ccflags contains -march=native or x86-64-v3, GCC defines
+        # __AVX__/__AVX2__, causing Embree factories to reference AVX/AVX2
+        # symbols that this SCsub does not compile.
+        if env["arch"] == "x86_64":
+            env_thirdparty.AppendUnique(
+                CXXFLAGS=[
+                    "-mno-avx",
+                    "-mno-avx2",
+                    "-mno-fma",
+                    "-mno-f16c",
+                ]
+            )
+
     env.modules_sources += thirdparty_obj
 
 
