@@ -401,6 +401,15 @@ bool EditorInterface::is_plugin_enabled(const String &p_plugin) const {
 	return EditorNode::get_singleton()->is_addon_plugin_enabled(p_plugin);
 }
 
+void EditorInterface::add_plugin(EditorPlugin *p_editor) const {
+	EditorNode::get_singleton()->add_editor_plugin(p_editor);
+}
+
+void EditorInterface::remove_plugin(EditorPlugin *p_editor) const {
+	EditorNode::get_singleton()->remove_editor_plugin(p_editor);
+}
+
+
 // Editor GUI.
 
 Ref<Theme> EditorInterface::get_editor_theme() const {
@@ -859,6 +868,8 @@ void EditorInterface::_bind_methods() {
 
 	ClassDB::bind_method(D_METHOD("set_plugin_enabled", "plugin", "enabled"), &EditorInterface::set_plugin_enabled);
 	ClassDB::bind_method(D_METHOD("is_plugin_enabled", "plugin"), &EditorInterface::is_plugin_enabled);
+	ClassDB::bind_method(D_METHOD("add_plugin", "plugin"), &EditorInterface::add_plugin);
+	ClassDB::bind_method(D_METHOD("remove_plugin", "plugin"), &EditorInterface::remove_plugin);
 
 	// Editor GUI.
 

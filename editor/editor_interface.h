@@ -114,6 +114,9 @@ public:
 	void set_plugin_enabled(const String &p_plugin, bool p_enabled);
 	bool is_plugin_enabled(const String &p_plugin) const;
 
+	void add_plugin(EditorPlugin *p_editor) const;
+	void remove_plugin(EditorPlugin *p_editor) const;
+
 	// Editor GUI.
 
 	Ref<Theme> get_editor_theme() const;
