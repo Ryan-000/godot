@@ -918,7 +918,7 @@ void SceneTree::_notification(int p_notification) {
 		return;
 	}
 
-	if (is_global_notifications_enabled()) {
+	if (!is_global_notifications_enabled()) {
 		// we will ignore notifications if its enabled
 		switch (p_notification) {
 			case NOTIFICATION_APPLICATION_FOCUS_IN:

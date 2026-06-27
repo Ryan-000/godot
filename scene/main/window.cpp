@@ -825,7 +825,7 @@ void Window::_rect_changed_callback(const Rect2i &p_callback) {
 }
 
 void Window::_propagate_window_notification(Node *p_node, int p_notification) {
-	if (is_inside_tree() && get_tree()->is_global_notifications_enabled()) {
+	if (is_inside_tree() && !get_tree()->is_global_notifications_enabled()) {
 		switch (p_notification) {
 			case NOTIFICATION_WM_MOUSE_ENTER:
 			case NOTIFICATION_WM_MOUSE_EXIT:
