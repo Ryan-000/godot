@@ -6137,6 +6137,11 @@ void EditorInspector::add_custom_property_description(const String &p_class, con
 	custom_property_descriptions[key] = p_description;
 }
 
+void EditorInspector::remove_custom_property_description(const String &p_class, const String &p_property) {
+	const String key = vformat("property|%s|%s", p_class, p_property);
+	custom_property_descriptions.erase(key);
+}
+
 String EditorInspector::get_custom_property_description(const String &p_property) const {
 	HashMap<String, String>::ConstIterator E = custom_property_descriptions.find(p_property);
 	if (E) {
@@ -6227,6 +6232,8 @@ void EditorInspector::_bind_methods() {
 	ClassDB::bind_method("collapse_all_folding", &EditorInspector::collapse_all_folding);
 	ClassDB::bind_method("expand_all_folding", &EditorInspector::expand_all_folding);
 	ClassDB::bind_method("expand_revertable", &EditorInspector::expand_revertable);
+	ClassDB::bind_method(D_METHOD("add_custom_property_description", "class", "property", "description"), &EditorInspector::add_custom_property_description);
+	ClassDB::bind_method(D_METHOD("remove_custom_property_description", "class", "property"), &EditorInspector::remove_custom_property_description);
 
 	ClassDB::bind_static_method("EditorInspector", D_METHOD("instantiate_property_editor", "object", "type", "path", "hint", "hint_text", "usage", "wide"), &EditorInspector::instantiate_property_editor, DEFVAL(false));
 	ClassDB::bind_static_method("EditorInspector", D_METHOD("create_default_inspector", "filter_line_edit"), &EditorInspector::create_default_inspector, DEFVAL(Variant()));
