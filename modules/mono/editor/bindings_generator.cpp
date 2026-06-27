@@ -2491,9 +2491,7 @@ Error BindingsGenerator::_generate_cs_type(const TypeInterface &itype, const Str
 			// pointers of generated wrappers for each method, as lookup will only happen once.
 
 			// We check both native names (snake_case) and proxy names (PascalCase)
-			output << INDENT2 "if ((method == " << CS_STATIC_FIELD_METHOD_PROXY_NAME_PREFIX << imethod.name
-				   << " || method == MethodName." << imethod.proxy_name
-				   << ") && args.Count == " << itos(imethod.arguments.size())
+			output << INDENT2 "if (" << "args.Count == " << itos(imethod.arguments.size()) << "&& (method == " << CS_STATIC_FIELD_METHOD_PROXY_NAME_PREFIX << imethod.name << " || method == MethodName." << imethod.proxy_name << ")"
 				   << " && " << CS_METHOD_HAS_GODOT_CLASS_METHOD << "((godot_string_name)"
 				   << CS_STATIC_FIELD_METHOD_PROXY_NAME_PREFIX << imethod.name << ".NativeValue))\n"
 				   << INDENT2 "{\n";
