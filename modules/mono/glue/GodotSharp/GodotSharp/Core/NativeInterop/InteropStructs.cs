@@ -613,8 +613,8 @@ namespace Godot.NativeInterop
 
             internal readonly IntPtr NativePtr
             {
-            	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-            	get => _data;
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                get => _data;
             }
 
             public static unsafe explicit operator movable(in godot_string_name value)
