@@ -95,6 +95,7 @@ public:
 	typedef void (*IdleCallback)();
 
 private:
+	bool global_notifications_enabled = false;
 	CallQueue::Allocator *process_group_call_queue_allocator = nullptr;
 
 	struct ProcessGroup {
@@ -303,6 +304,9 @@ public:
 	};
 
 	RequiredResult<Window> get_root() const;
+
+	bool is_global_notifications_enabled() const { return global_notifications_enabled; };
+	void set_global_notifications_enabled(bool p_enabled) { global_notifications_enabled = p_enabled; }
 
 	void call_group_flagsp(uint32_t p_call_flags, const StringName &p_group, const StringName &p_function, const Variant **p_args, int p_argcount);
 	void notify_group_flags(uint32_t p_call_flags, const StringName &p_group, int p_notification);

@@ -918,6 +918,20 @@ void SceneTree::_notification(int p_notification) {
 		return;
 	}
 
+	if (is_global_notifications_enabled()) {
+		// we will ignore notifications if its enabled
+		switch (p_notification) {
+			case NOTIFICATION_APPLICATION_FOCUS_IN:
+			case NOTIFICATION_APPLICATION_FOCUS_OUT: {
+				return;
+			}
+			default: {
+				break;
+			}
+		}
+	}
+
+
 	switch (p_notification) {
 		case NOTIFICATION_TRANSLATION_CHANGED: {
 			get_root()->propagate_notification(p_notification);
@@ -1892,6 +1906,9 @@ bool SceneTree::is_multiplayer_poll_enabled() const {
 }
 
 void SceneTree::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("is_global_notifications_enabled"), &SceneTree::is_global_notifications_enabled);
+	ClassDB::bind_method(D_METHOD("set_global_notifications_enabled", "enabled"), &SceneTree::set_global_notifications_enabled, DEFVAL(true));
+
 	ClassDB::bind_method(D_METHOD("get_root"), &SceneTree::get_root);
 	ClassDB::bind_method(D_METHOD("has_group", "name"), &SceneTree::has_group);
 
