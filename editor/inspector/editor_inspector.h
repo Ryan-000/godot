@@ -891,6 +891,7 @@ public:
 	String get_property_prefix() const;
 
 	void add_custom_property_description(const String &p_class, const String &p_property, const String &p_description);
+	void remove_custom_property_description(const String &p_class, const String &p_property);
 	String get_custom_property_description(const String &p_property) const;
 
 	void remap_doc_property_class(const String &p_property_prefix, const String &p_class);
